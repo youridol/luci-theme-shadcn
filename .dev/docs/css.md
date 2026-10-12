@@ -8,10 +8,27 @@ Style with TailwindCSS v4 `@apply`, using CSS Nesting (`&:hover`, `&[disabled]`,
 
 Built CSS keeps Tailwind's native `@layer` structure. Theme partials (`_base.css`, `components/*`, `_utilities.css`, …) are plain unlayered CSS — organization comes from the file split, never wrap rules in `@layer`. Unlayered partials outrank Tailwind's layered base/utilities regardless of specificity; the OKLCH tokens already gate browsers to ones with `@layer` support.
 
+## Motion (tw-animate-css)
+
+`main.css` imports `tw-animate-css` right after the tokens, before the theme partials. It ships `@utility` definitions (`animate-in`, `fade-in-0`, `zoom-in-95`, `slide-in-from-*`, …) plus the `enter`/`exit` keyframes and the `--animate-in`/`--animate-out` shorthands.
+
+**`@apply` cannot reference an `@utility`.** Write the animation as a raw shorthand instead:
+
+```css
+animation: var(--animate-in);
+--tw-enter-opacity: 0; /* fade-in-0 */
+--tw-enter-scale: 95%; /* zoom-in-95 */
+```
+
+To make an entrance conditional (a drawer that must not replay on load), drive it with `@starting-style` rather than a bare `animation`, which would replay on every attribute change.
+
+`_reduced-motion.css` collapses every animation to 1ms rather than `none`, because luci-base acts on `transitionend`; that still applies to these animations.
+
 ## Tokens
 
 - **Token source**: the engine and resolver (operators, `createResolver`, CSS emission helpers) come from `@eamonxg/luci-theme-tokens` (`/engine`, `/emit`); this repo only keeps `tokens/spec.js` (derivations, baked-alpha variants) + `tokens/defaults.js` (input colors). Edit those, then run `pnpm gen:tokens`. Do not edit generated `src/media/_tokens.css` directly.
 - **`_tokens.css`**: generated flat OKLCH custom properties for light and dark modes plus the shared `@theme inline` mapping. It is imported by both `main.css` and `login.css`; runtime token-based `color-mix()` and relative `oklch(from …)` are prohibited.
+- **Official names**: every surface/foreground token uses the shadcn/ui name (`--background`, `--card`, `--popover`, `--accent`, `--muted`, `--primary`, `--primary-foreground`, `--border`, `--input`, `--ring`, `--radius`, `--sidebar-*`), so the official docs read 1:1 against this theme. LuCI-only surfaces keep their own names (`--terminal-*`, `--progress-bar-*`, `--label-surface`, `--panel-bg`, `--login-left-bg`). `--radius` is the single radius knob (0.625rem) with the official sm/md/lg/xl/2xl multipliers; `--radius-base` is an alias for it.
 - **`login.css`**: separate Vite build entry for the login page; it does **not** import `main.css`, but re-imports the generated `_tokens.css`.
 
 ## Dark mode

@@ -20,3 +20,15 @@ version must match the target router, because the SDK decides `ipk` (opkg) vs `a
 target (`192.168.3.254`) is LEDE `24.10.5`, `x86/64`, `opkg`, hence `SDK: "24.10.5"`. Update it
 after reflashing the router. Whole-firmware (`openwrt-build`) compilation is deliberately **not**
 wired in yet. Details: [.dev/docs/build.md](.dev/docs/build.md#continuous-ipk-builds).
+
+## Budgets & dependencies
+
+`.dev/tests/build-output.test.js` asserts raw-transfer budgets because uhttpd serves identity
+bytes: `main.css ≤ 145 KB`, `login.css ≤ 20 KB`, plus per-file and aggregate caps for the JS
+resources and the Inter subset. These were raised for the shadcn realignment (v0.7.0) when the
+official token set and `tw-animate-css` were added — the assertion is a guard against unnoticed
+growth, so raise it again only with a measured reason recorded in the commit.
+
+`tw-animate-css` is the only added runtime dependency of the realignment. It ships its utilities
+with `@utility`, which `@apply` cannot reference — see the Motion section of
+[.dev/docs/css.md](.dev/docs/css.md) for the raw-shorthand pattern.
