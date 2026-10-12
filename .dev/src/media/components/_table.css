@@ -7,7 +7,14 @@
    zebra at muted, borders from --border. */
 table.table,
 .table {
-  @apply border-border mb-4 w-full border-separate border-spacing-0 overflow-visible rounded-lg border text-sm max-md:block max-md:rounded-none max-md:border-0 max-md:shadow-none;
+  /* `table` is load-bearing beyond the real <table> case. LuCI mostly ships
+     real tables, where display:table is the UA default, so naming it changes
+     nothing. But apps that build a table out of <div class="table"> — 
+     luci-app-trafficctl does — would otherwise be display:block, and then each
+     row is wrapped in a *separate* anonymous table, so header columns never
+     line up with body columns. Declaring the table/row/cell trio on the
+     container makes every row share one table. */
+  @apply border-border mb-4 table w-full border-separate border-spacing-0 overflow-visible rounded-lg border text-sm max-md:block max-md:rounded-none max-md:border-0 max-md:shadow-none;
 
   &[width="100%"] {
     @apply w-full;
@@ -36,12 +43,14 @@ table.table,
 
   tbody,
   .tbody {
-    @apply max-md:block;
+    /* A div-based table body must join the table model too, or its rows are
+       wrapped in their own anonymous table. */
+    @apply table-row-group max-md:block;
   }
 
   tr,
   .tr {
-    @apply hover:bg-muted max-md:border-border [transition:background-color_.15s] max-md:flex max-md:flex-wrap max-md:border-b max-md:px-2 max-md:py-2;
+    @apply hover:bg-muted max-md:border-border table-row [transition:background-color_.15s] max-md:flex max-md:flex-wrap max-md:border-b max-md:px-2 max-md:py-2;
 
     &:first-child {
       &:not([data-title]) {
@@ -81,7 +90,14 @@ table.table,
 
   th,
   .th {
-    @apply border-border bg-muted text-foreground h-10 border-b px-3 py-2.5 text-left text-sm font-medium max-md:hidden;
+    /* display: table-cell is load-bearing, not decoration. A real <table>
+       gives its <th> that display for free, but apps that build a table out of
+       <div class="th"> (luci-app-trafficctl does) inherit the browser default
+       block instead — the header cells then stack one per line while the
+       body's .td cells, which do declare table-cell below, stay in columns.
+       Declaring it here keeps the two symmetric. On a real <table> it is a
+       no-op, and `max-md:hidden` still removes the header on mobile. */
+    @apply border-border bg-muted text-foreground table-cell h-10 border-b px-3 py-2.5 text-left text-sm font-medium max-md:hidden;
 
     &[width="100%"] {
       @apply w-full;
