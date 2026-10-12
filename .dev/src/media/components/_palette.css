@@ -27,7 +27,7 @@ button.cmdk-trigger {
 }
 
 .cmdk-trigger-key {
-  @apply border-border bg-label-surface text-muted-foreground rounded-md border px-1.5 py-px font-mono text-xs max-md:hidden;
+  @apply border-border bg-muted text-muted-foreground rounded-md border px-1.5 py-px font-mono text-xs max-md:hidden;
 }
 
 /* ── Overlay & panel ─────────────────────────────────────────────── */
@@ -35,6 +35,9 @@ button.cmdk-trigger {
 #cmdk-overlay {
   @apply bg-overlay-base-a60 fixed inset-0 z-50 flex items-start justify-center backdrop-blur-sm;
   @apply max-md:bg-transparent max-md:backdrop-blur-none;
+  /* Official CommandDialog overlay: animate-in + fade-in-0. */
+  animation: var(--animate-in);
+  --tw-enter-opacity: 0;
 
   &[hidden] {
     @apply hidden;
@@ -45,15 +48,19 @@ button.cmdk-trigger {
   /* 560px: with the section label on the right edge, the width is what
      separates title from label — 460 read cramped once rows became
      two-anchored. */
-  @apply border-panel-border bg-panel-bg mt-[15vh] flex w-[min(560px,calc(100vw-32px))] flex-col overflow-hidden rounded-xl border shadow-2xl;
-  @apply [transition:opacity_.15s_var(--ease-out),translate_.15s_var(--ease-out)] starting:-translate-y-1.5 starting:opacity-0;
+  @apply border-border bg-popover mt-[15vh] flex w-[min(560px,calc(100vw-32px))] flex-col overflow-hidden rounded-xl border shadow-lg;
+  /* Official CommandDialog content: fade-in-0 + zoom-in-95 over 150ms. */
+  animation: var(--animate-in);
+  animation-duration: 150ms;
+  --tw-enter-opacity: 0;
+  --tw-enter-scale: 95%;
   @apply max-md:mt-0 max-md:h-dvh max-md:w-full max-md:rounded-none max-md:border-0 max-md:pt-[env(safe-area-inset-top)] max-md:shadow-none max-md:transition-none;
 }
 
 /* ── Input row ───────────────────────────────────────────────────── */
 
 .cmdk-inputrow {
-  @apply border-panel-border relative flex h-12 shrink-0 items-center gap-2 border-b pr-3 pl-10;
+  @apply border-border relative flex h-12 shrink-0 items-center gap-2 border-b pr-3 pl-10;
   @apply max-md:h-14 max-md:pr-1.5;
 
   &::before {
@@ -92,7 +99,7 @@ button.cmdk-clear {
 
 /* Right-edge Cancel — the <md takeover's dismissal, system-search style. */
 button.cmdk-cancel {
-  @apply text-primary hidden shrink-0 cursor-pointer border-0 bg-transparent text-sm;
+  @apply text-foreground hidden shrink-0 cursor-pointer border-0 bg-transparent text-sm font-medium;
   @apply max-md:block max-md:py-1.5 max-md:pr-4 max-md:pl-1.5;
 }
 
@@ -126,7 +133,7 @@ button.cmdk-cancel {
   }
 
   mark {
-    @apply text-primary bg-transparent font-semibold;
+    @apply text-foreground bg-transparent font-semibold;
   }
 
   .cmdk-title {
@@ -142,11 +149,11 @@ button.cmdk-cancel {
   /* The tick marks which theme mode is in effect, so it has to stay
      legible on every row, focused or not. */
   .cmdk-check {
-    @apply text-primary ml-auto block size-3.5 shrink-0 bg-current [mask:url('@assets/icons/check.svg')_center/contain_no-repeat];
+    @apply text-foreground ml-auto block size-3.5 shrink-0 bg-current [mask:url('@assets/icons/check.svg')_center/contain_no-repeat];
   }
 
   &.is-selected {
-    @apply bg-muted;
+    @apply bg-accent;
   }
 }
 
@@ -178,11 +185,11 @@ button.cmdk-cancel {
 /* ── Footer (desktop-only keyboard hints) ────────────────────────── */
 
 .cmdk-footer {
-  @apply border-panel-border bg-background-a60 text-muted-foreground flex shrink-0 items-center gap-3.5 border-t px-3.5 py-2 text-xs;
+  @apply border-border bg-muted text-muted-foreground flex shrink-0 items-center gap-3.5 border-t px-3.5 py-2 text-xs;
   @apply max-md:hidden;
 
   kbd {
-    @apply border-border bg-label-surface rounded-md border px-1.5 py-px font-mono text-xs;
+    @apply border-border bg-background rounded-md border px-1.5 py-px font-mono text-xs;
   }
 
   .cmdk-hint {

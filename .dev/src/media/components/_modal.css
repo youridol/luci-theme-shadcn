@@ -9,10 +9,22 @@
 
   .modal-overlay-active & {
     @apply bg-overlay-base-a60 pointer-events-auto inset-0 z-50 grid place-items-center backdrop-blur-sm;
+    /* Official Dialog overlay: animate-in + fade-in-0. LuCI toggles the class
+       on <body> rather than a data-state attribute, so the enter state is
+       keyed on the class. Written as a raw animation shorthand because
+       tw-animate-css ships these as @utility definitions, which @apply cannot
+       reference. */
+    animation: var(--animate-in);
+    --tw-enter-opacity: 0;
   }
 
   > .modal {
     @apply border-border bg-background flex w-full max-w-2xl flex-col gap-4 rounded-lg border p-6 break-words whitespace-normal shadow-lg;
+    /* Official DialogContent: fade-in-0 + zoom-in-95 over 200ms. */
+    animation: var(--animate-in);
+    animation-duration: 200ms;
+    --tw-enter-opacity: 0;
+    --tw-enter-scale: 95%;
 
     h4 {
       @apply mb-0 text-center;
