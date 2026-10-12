@@ -44,3 +44,32 @@ No linter CLI; the only tests are `.dev/tests/*.test.js` (plain `node:test`, no 
 
 - `Makefile` (`PKG_VERSION` / `PKG_RELEASE`) is the OpenWrt package manifest, built via `feeds/luci/luci.mk`.
 - `.github/workflows/build-theme.yml` builds `.ipk`/`.apk` via `eamonxg/build-luci-package` on version tags, pushes to `main`/`feat/**`, or when the commit message contains `[build]`.
+- `.github/workflows/build-ipk.yml` builds the `.ipk` on **every** push (plus PRs against `main`), pinned to the SDK matching the target router — see below.
+
+## Continuous `ipk` builds
+
+`build-ipk.yml` answers "every commit should produce something installable". It rebuilds the
+frontend assets on the runner, then compiles the package in
+`ghcr.io/openwrt/sdk:x86_64-<SDK>`, and uploads `out/*.ipk` as an artifact.
+
+The SDK version in `env.SDK` is not arbitrary: it must match the target router, because the SDK
+decides whether the package comes out as `ipk` (opkg) or `apk`. The router it targets
+(`192.168.3.254`) reports:
+
+| fact            | value                                                    |
+| --------------- | -------------------------------------------------------- |
+| distribution    | LEDE (`coolsnowwolf/lede`), `DISTRIB_RELEASE='24.10.5'`   |
+| target / arch   | `x86/64` / `x86_64`                                       |
+| package manager | `opkg` → `.ipk` (not `apk`)                               |
+
+So the workflow pins `SDK: "24.10.5"` and asserts `pkg_type == ipk` — if someone bumps the SDK to
+an `apk`-based release without updating the router, the run fails loudly instead of silently
+shipping a package the device cannot install. After reflashing the router, update `env.SDK`.
+
+Two consequences worth knowing:
+
+- The `.ipk` is built from the **rebuilt** `htdocs/`, not the committed copy. That keeps the package
+  honest even when a source change was pushed without its rebuilt assets; it does not, however,
+  stop the committed `htdocs/` from going stale.
+- pnpm's action cannot read `packageManager` from `.dev/package.json`, so `build-ipk.yml` pins the
+  pnpm version literally. Bump it in both places.

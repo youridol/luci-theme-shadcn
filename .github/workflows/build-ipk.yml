@@ -1,0 +1,116 @@
+name: Build Theme ipk
+
+# 每次提交都自动编译主题包（.ipk）。
+#
+# 与 build-theme.yml 的分工：
+#   - build-theme.yml —— 发版：tag 时用多个 SDK 版本（24.10.4 / 25.12.5）编译并上传 GitHub Release；
+#   - 本工作流       —— 日常：每次推送都编出一个能直接装到路由器上的 .ipk。
+#
+# 为什么 SDK 锁定 24.10.5 这一个版本：
+#   本机路由器 192.168.3.254 实测为 LEDE（coolsnowwolf/lede），
+#   DISTRIB_RELEASE=24.10.5、TARGET=x86/64、包管理器 opkg（只吃 .ipk）。
+#   SDK 版本与设备一致，编出来的包才能被设备上的 opkg 直接安装。
+#   设备升级后，只改下面 env.SDK 一处即可。
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+    # 显式列出 tags：只声明 branches 时 tag 推送不会触发本工作流。
+    # tag 上也要编，是为了让每个正式版本同样留下一个与设备匹配的 24.10.5 产物。
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# 同一分支上的新推送取消仍在跑的旧构建：编一次 .ipk 要十几分钟，
+# 让排队等着的旧提交继续跑没有意义。
+concurrency:
+  group: build-ipk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SDK: "24.10.5"
+
+# 本工作流只上传 artifact，不碰 Release，所以只需读权限。
+permissions:
+  contents: read
+
+jobs:
+  ipk:
+    name: luci-theme-shadcn ipk (SDK ${{ env.SDK }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # 前端产物 htdocs/ 是提交进仓库的，这里先在本作业里重建一次：
+      #   1. 校验当前源码确实能编译通过；
+      #   2. 让下面打进 .ipk 的 htdocs/ 一定来自当前源码 ——
+      #      作者忘记提交构建产物时，也不会把旧资源打进包里。
+      - uses: pnpm/action-setup@v4
+        with:
+          # 必须显式指定：package.json 在 .dev/ 下，
+          # pnpm/action-setup 从仓库根读不到那里的 packageManager 字段。
+          # 该值须与 .dev/package.json 的 packageManager 保持一致，
+          # 否则 lockfile 格式不匹配。
+          version: 12.4.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: .dev/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .dev
+
+      - name: Test
+        run: pnpm test
+        working-directory: .dev
+
+      - name: Build frontend assets
+        run: pnpm build
+        working-directory: .dev
+
+      - name: Build ipk in OpenWrt SDK
+        id: build
+        uses: eamonxg/build-luci-package@v2
+        with:
+          sdk: ${{ env.SDK }}
+          packages: '[{"pkg":"luci-theme-shadcn","path":"."}]'
+
+      - name: Show what was built
+        run: |
+          set -euo pipefail
+          echo "===== build-info.json ====="
+          cat out/build-info.json
+          echo "===== out/ ====="
+          ls -l out/
+          echo "===== 本工作流只编主题包，不生成整机固件（.img.gz）====="
+
+      # 断言产物类型：SDK 决定出 ipk 还是 apk。
+      # 设备是 opkg（.ipk），若将来把 SDK 换成 apk 系（25.12+），
+      # 这里要立刻失败，而不是默默产出一个装不上的包。
+      - name: Assert ipk output
+        run: |
+          set -euo pipefail
+          test "${{ steps.build.outputs.pkg_type }}" = ipk || {
+            echo "!!! 期望 ipk，实际 ${{ steps.build.outputs.pkg_type }}" >&2
+            exit 1
+          }
+          ls out/*.ipk >/dev/null 2>&1 || { echo "!!! out/ 下没有 .ipk" >&2; exit 1; }
+          ls -l out/*.ipk
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: luci-theme-shadcn-${{ github.sha }}-ipk
+          path: out/*.ipk
+          if-no-files-found: error
+
+      # 这里刻意不发 Release：发版归 build-theme.yml 所有。
+      # 两个工作流都在 tag 上往同一个 Release 传文件，只会互相争抢；
+      # 本工作流的产物一律走 artifact，tag 上也不例外。
