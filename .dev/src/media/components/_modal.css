@@ -1,3 +1,9 @@
+/* shadcn Dialog — LuCI #modal_overlay / .modal.
+   Official DialogContent: rounded-lg, border, bg-background, p-6, shadow-lg,
+   max-w-[calc(100%-2rem)] / sm:max-w-lg, gap-4, with the overlay at
+   bg-black/50. LuCI's modal is a wide confirmation/UCI-diff dialog, so the
+   max width stays generous (max-w-2xl) but the chrome, radius, shadow and
+   overlay all follow the official spec. */
 #modal_overlay {
   @apply pointer-events-none fixed top-0 bottom-0 hidden overflow-auto bg-transparent;
 
@@ -6,12 +12,12 @@
   }
 
   > .modal {
-    @apply border-border bg-panel-bg flex w-full max-w-2xl flex-col gap-4 rounded-xl border p-6 break-words whitespace-normal shadow-2xl;
+    @apply border-border bg-background flex w-full max-w-2xl flex-col gap-4 rounded-lg border p-6 break-words whitespace-normal shadow-lg;
 
     h4 {
       @apply mb-0 text-center;
       em {
-        @apply text-primary font-semibold;
+        @apply text-foreground font-semibold;
       }
     }
 
@@ -24,11 +30,11 @@
     }
 
     > ul {
-      @apply border-border bg-background-a60 overflow-auto rounded-lg border p-3;
+      @apply border-border bg-muted overflow-auto rounded-md border p-3;
     }
 
     label.btn {
-      @apply border-border bg-background-a60 text-foreground hover:border-border border;
+      @apply border-input bg-input-a30 text-foreground hover:bg-accent hover:text-accent-foreground border;
     }
 
     pre {
@@ -60,7 +66,7 @@
       ins,
       del,
       var {
-        @apply font-mono not-italic no-underline shadow-sm;
+        @apply font-mono not-italic no-underline shadow-xs;
       }
 
       ins {
@@ -74,7 +80,7 @@
       }
 
       .uci-change-legend {
-        @apply border-border bg-background-a60 mt-4 grid grid-cols-2 gap-3 rounded-lg border p-4;
+        @apply border-border bg-muted mt-4 grid grid-cols-2 gap-3 rounded-md border p-4;
 
         .uci-change-legend-label {
           @apply text-foreground flex items-center gap-2 text-sm font-medium;
@@ -91,12 +97,12 @@
         @apply mt-4 space-y-3;
 
         h5 {
-          @apply bg-muted text-foreground mt-4 mb-2 rounded-lg px-3 py-2 text-sm font-semibold first:mt-0;
+          @apply bg-muted text-foreground mt-4 mb-2 rounded-md px-3 py-2 text-sm font-semibold first:mt-0;
         }
 
         ins,
         del {
-          @apply block rounded-lg px-3 py-2 text-sm;
+          @apply block rounded-md px-3 py-2 text-sm;
           strong {
             @apply text-sm;
           }

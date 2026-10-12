@@ -1,3 +1,8 @@
+/* shadcn Tooltip — LuCI .cbi-tooltip.
+   Official TooltipContent is the inverted surface: bg-foreground with
+   text-background, rounded-md, px-3 py-1.5, text-xs, plus zoom-in-95. This
+   theme keeps the bordered panel look (LuCI tooltips carry structured content)
+   but adopts the official radius, padding, shadow-md and the scale-in. */
 .cbi-tooltip {
   /* Hidden bubbles park off-screen (`left:-10000px`): a
      visibility-hidden absolute box left at its anchor still counts into the
@@ -7,7 +12,7 @@
      `transition-all` would animate the inset and make the bubble fly in from
      off-screen. `w-max` sizes the bubble by its content instead of the narrow
      anchor's containing block (which squeezed it to one word per line). */
-  @apply border-border-a60 bg-panel-bg text-foreground absolute inset-s-[-10000px] z-50 w-max max-w-xs scale-95 rounded-lg border px-3 py-2 text-xs break-normal whitespace-normal opacity-0 shadow-lg [transition:visibility_.2s_var(--ease-out),opacity_.2s_var(--ease-out),scale_.2s_var(--ease-out)];
+  @apply border-border bg-popover text-foreground absolute inset-s-[-10000px] z-50 w-max max-w-xs scale-95 rounded-md border px-3 py-1.5 text-xs break-normal whitespace-normal opacity-0 shadow-md [transition:visibility_.15s_var(--ease-out),opacity_.15s_var(--ease-out),scale_.15s_var(--ease-out)];
 
   &.error {
     @apply border-destructive-a40 bg-destructive text-destructive-fg;
@@ -28,7 +33,7 @@
   @apply relative inline-block cursor-help whitespace-nowrap underline decoration-current decoration-dotted underline-offset-2;
 
   .cbi-tooltip {
-    @apply invisible scale-95 opacity-0 [transition:visibility_.2s_var(--ease-out),opacity_.2s_var(--ease-out),scale_.2s_var(--ease-out)];
+    @apply invisible scale-95 opacity-0 [transition:visibility_.15s_var(--ease-out),opacity_.15s_var(--ease-out),scale_.15s_var(--ease-out)];
   }
 
   &:hover .cbi-tooltip {

@@ -39,6 +39,17 @@
   }
 }
 
+/* Official base layer: every element defaults its border colour to --border
+   and its outline colour to --ring at 50%, so a bare `border` in a partial
+   never falls back to currentColor. LuCI relies on that in several places
+   (e.g. #syslog's explicit border-border was only needed before this). */
+*,
+::before,
+::after {
+  border-color: var(--border);
+  outline-color: var(--ring-a50);
+}
+
 html {
   @apply bg-background text-foreground font-sans text-sm;
 

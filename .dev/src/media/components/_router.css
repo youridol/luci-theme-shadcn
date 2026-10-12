@@ -4,9 +4,10 @@
    silent 150 ms, width driven inline and trickling until commit (so a slow
    render keeps visibly moving), then filled, faded and removed from the
    DOM. Only width and opacity move. Reduced motion drops the transitions,
-   not the bar. */
+   not the bar. The official Progress indicator is a solid primary fill, so
+   the bar no longer carries the brand gradient. */
 #luci-nav-progress {
-  @apply from-progress-bar-start to-progress-bar-end pointer-events-none fixed top-0 left-0 z-80 h-0.5 w-0 bg-linear-to-r [transition:width_.3s_var(--ease-out)];
+  @apply bg-primary pointer-events-none fixed top-0 left-0 z-80 h-0.5 w-0 [transition:width_.3s_var(--ease-out)];
 
   &[data-state="done"] {
     @apply opacity-0 [transition:width_.3s_ease-out,opacity_.15s_ease-in_.15s];
