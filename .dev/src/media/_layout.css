@@ -3,8 +3,10 @@
 #sidebar {
   /* Mobile drawer: translate only; `transition-all` would also ease
      background-color and lag the sidebar behind the content on theme flips. */
-  @apply bg-sidebar-bg flex h-full w-[220px] shrink-0 flex-col overflow-hidden;
-  @apply max-md:fixed max-md:top-0 max-md:left-0 max-md:z-40 max-md:h-dvh max-md:w-[240px] max-md:-translate-x-full max-md:shadow-lg max-md:[transition:translate_.3s_var(--ease-out)];
+  /* 16rem expanded and 18rem on mobile are the official SIDEBAR_WIDTH /
+     SIDEBAR_WIDTH_MOBILE constants; 3rem is SIDEBAR_WIDTH_ICON below. */
+  @apply bg-sidebar-bg flex h-full w-64 shrink-0 flex-col overflow-hidden;
+  @apply max-md:fixed max-md:top-0 max-md:left-0 max-md:z-40 max-md:h-dvh max-md:w-72 max-md:-translate-x-full max-md:shadow-lg max-md:[transition:translate_.3s_var(--ease-out)];
 
   /* Official Sheet (side=left) enter: slide-in-from-left. @starting-style is
      the native "before first appearance" hook, so the drawer slides in only
@@ -47,7 +49,7 @@ html[data-sidebar-collapsed="true"] #sidebar {
 }
 
 .sidebar-brand {
-  @apply text-sidebar-fg flex min-w-0 flex-1 items-center gap-2 truncate no-underline;
+  @apply text-sidebar-foreground flex min-w-0 flex-1 items-center gap-2 truncate no-underline;
 }
 
 .sidebar-logo {
@@ -59,15 +61,11 @@ html[data-sidebar-collapsed="true"] #sidebar {
 }
 
 .sidebar-toggle {
-  @apply text-sidebar-muted flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 [transition:color_.15s,background-color_.15s,border-color_.15s];
-
-  &:hover {
-    @apply bg-sidebar-accent text-sidebar-accent-fg;
-  }
+  @apply text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 [transition:color_.15s,background-color_.15s,border-color_.15s];
 
   svg,
   img {
-    @apply h-4 w-4;
+    @apply size-4;
   }
 }
 
@@ -81,23 +79,22 @@ html[data-sidebar-collapsed="true"] #sidebar {
 .sidebar-accordion-item {
   @apply mb-0.5;
 
+  /* Official SidebarMenuButton active: the same surface as hover
+     (bg-sidebar-accent) plus font-medium, rather than a separate tinted
+     background and a coloured label. */
   &.active > .sidebar-nav-parent {
-    @apply text-sidebar-active-fg;
+    @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
   }
 }
 
 .sidebar-nav-parent {
-  @apply text-sidebar-muted flex w-full cursor-pointer appearance-none items-center justify-start gap-2.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-sm font-medium [transition:color_.15s,background-color_.15s,border-color_.15s];
-
-  &:hover {
-    @apply bg-sidebar-accent text-sidebar-accent-fg;
-  }
+  @apply text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex w-full cursor-pointer appearance-none items-center justify-start gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-sm font-medium [transition:color_.15s,background-color_.15s,border-color_.15s];
 
   .sidebar-icon {
     @apply flex shrink-0 items-center justify-center;
     svg,
     img {
-      @apply h-4 w-4;
+      @apply size-4;
     }
   }
 
@@ -109,7 +106,7 @@ html[data-sidebar-collapsed="true"] #sidebar {
     @apply ml-auto shrink-0 [transition:rotate_.2s];
     svg,
     img {
-      @apply h-3.5 w-3.5;
+      @apply size-3.5;
     }
   }
 }
@@ -117,7 +114,7 @@ html[data-sidebar-collapsed="true"] #sidebar {
 .sidebar-accordion-item {
   &[data-open="true"] {
     > .sidebar-nav-parent {
-      @apply bg-sidebar-active-bg text-sidebar-active-fg;
+      @apply bg-sidebar-accent text-sidebar-accent-foreground;
     }
     .sidebar-chevron {
       @apply rotate-180;
@@ -155,23 +152,20 @@ html[data-sidebar-collapsed="true"] #sidebar {
 .sidebar-sub-item {
   @apply mb-0.5;
 
+  /* Official SidebarMenuSubButton active: bg-sidebar-accent + font-medium. */
   &.active .sidebar-sub-link {
-    @apply text-sidebar-active-fg font-medium;
+    @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
   }
 }
 
 .sidebar-sub-link {
-  @apply text-sidebar-muted block rounded-md px-2 py-1.5 text-sm no-underline [transition:color_.15s,background-color_.15s,border-color_.15s];
-
-  &:hover {
-    @apply bg-sidebar-accent text-sidebar-accent-fg;
-  }
+  @apply text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground block rounded-md px-2 py-1.5 text-sm no-underline [transition:color_.15s,background-color_.15s,border-color_.15s];
 }
 
 /* ── Collapsed hover popover ──────────────────────────────────────── */
 
 .sidebar-collapsed-popover {
-  @apply border-border bg-panel-bg fixed z-50 min-w-44 overflow-hidden rounded-lg border py-1 shadow-lg;
+  @apply border-border bg-popover fixed z-50 min-w-44 overflow-hidden rounded-lg border py-1 shadow-md;
 }
 
 .sidebar-collapsed-popover-title {
@@ -183,14 +177,10 @@ html[data-sidebar-collapsed="true"] #sidebar {
 }
 
 .sidebar-collapsed-popover-link {
-  @apply text-sidebar-muted mx-1 block rounded-sm px-2 py-1.5 text-sm no-underline [transition:color_.15s,background-color_.15s,border-color_.15s];
-
-  &:hover {
-    @apply bg-sidebar-accent text-sidebar-accent-fg;
-  }
+  @apply text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground mx-1 block rounded-sm px-2 py-1.5 text-sm no-underline [transition:color_.15s,background-color_.15s,border-color_.15s];
 
   &.active {
-    @apply text-sidebar-active-fg font-medium;
+    @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
   }
 }
 
@@ -202,21 +192,17 @@ html[data-sidebar-collapsed="true"] #sidebar {
 }
 
 .sidebar-logout {
-  @apply text-sidebar-muted flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm no-underline [transition:color_.15s,background-color_.15s,border-color_.15s];
-
-  &:hover {
-    @apply bg-sidebar-accent text-sidebar-accent-fg;
-  }
+  @apply text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm no-underline [transition:color_.15s,background-color_.15s,border-color_.15s];
 
   &.active {
-    @apply text-sidebar-active-fg font-medium;
+    @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
   }
 
   .sidebar-icon {
     @apply flex shrink-0 items-center justify-center;
     svg,
     img {
-      @apply h-4 w-4;
+      @apply size-4;
     }
   }
 
@@ -239,7 +225,10 @@ html[data-sidebar-collapsed="true"] #sidebar {
 /* ── Content card ────────────────────────────────────────────────── */
 
 .content-card {
-  @apply border-panel-border bg-panel-bg flex flex-1 flex-col overflow-hidden rounded-xl border shadow-sm max-md:rounded-none max-md:border-none max-md:shadow-none;
+  /* Official SidebarInset: bg-background with md:rounded-xl md:shadow-sm and
+     a small inset margin, so the content reads as a card floating on the
+     canvas rather than a full-bleed panel. */
+  @apply border-border bg-background flex flex-1 flex-col overflow-hidden rounded-xl border shadow-xs max-md:rounded-none max-md:border-none max-md:shadow-none;
 }
 
 /* The rail width eases and #main-wrapper (flex-1) follows it frame by frame.
@@ -251,7 +240,7 @@ html[data-sidebar-anim] #sidebar {
 /* ── Card header ─────────────────────────────────────────────────── */
 
 .card-header {
-  @apply border-panel-border bg-panel-bg flex h-12 shrink-0 items-center justify-between border-b px-4;
+  @apply border-border bg-background flex h-12 shrink-0 items-center justify-between border-b px-4;
 }
 
 .card-header-left {
@@ -262,15 +251,11 @@ html[data-sidebar-anim] #sidebar {
 }
 
 .topbar-hamburger {
-  @apply text-muted-foreground hidden h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 [transition:color_.15s,background-color_.15s,border-color_.15s] max-md:flex;
-
-  &:hover {
-    @apply bg-muted;
-  }
+  @apply text-muted-foreground hover:bg-accent hover:text-accent-foreground hidden h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 [transition:color_.15s,background-color_.15s,border-color_.15s] max-md:flex;
 
   svg,
   img {
-    @apply h-5 w-5;
+    @apply size-5;
   }
 }
 
@@ -294,14 +279,10 @@ html[data-sidebar-anim] #sidebar {
 }
 
 button.topbar-icon-btn {
-  @apply text-muted-foreground inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 [transition:color_.15s,background-color_.15s,border-color_.15s];
-
-  &:hover {
-    @apply bg-muted text-foreground;
-  }
+  @apply text-muted-foreground hover:bg-accent hover:text-accent-foreground inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 [transition:color_.15s,background-color_.15s,border-color_.15s];
 
   img {
-    @apply h-4 w-4 shrink-0;
+    @apply size-4 shrink-0;
   }
 }
 
@@ -321,7 +302,7 @@ button.topbar-icon-btn {
     }
 
     &:hover {
-      @apply bg-muted text-foreground;
+      @apply bg-accent text-accent-foreground;
     }
 
     &[data-indicator="poll-status"] {
@@ -375,10 +356,10 @@ button.topbar-icon-btn {
      lines inline; recolor for dark mode. */
   & div[style] {
     > svg {
-      @apply dark:!bg-surface;
+      @apply dark:!bg-card;
 
       & line[style] {
-        @apply dark:!stroke-text;
+        @apply dark:!stroke-foreground;
       }
     }
   }

@@ -119,7 +119,8 @@ html {
 }
 
 .login-logo {
-  @apply border-primary-a20 bg-primary-a10 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border;
+  /* Official Button icon-size square with the Card radius scale. */
+  @apply border-input bg-input-a30 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border;
 
   img {
     @apply h-full w-full;
@@ -141,7 +142,8 @@ html {
 /* ── Form elements ── */
 
 .login-error {
-  @apply border-destructive-a30 bg-destructive-a8 text-destructive mb-4 rounded-2xl border px-4 py-3 text-sm;
+  /* Official Alert radius/padding scale rather than the glass input's. */
+  @apply border-destructive-a30 bg-destructive-a10 text-destructive mb-4 rounded-lg border px-4 py-3 text-sm;
 }
 
 .login-field {
@@ -154,15 +156,15 @@ html {
 
 /* Glass input wrapper — matches sign-in.tsx GlassInputWrapper */
 .login-input-glass {
-  @apply border-border bg-foreground-a5 relative rounded-2xl border [transition:color_.15s,background-color_.15s,border-color_.15s];
+  @apply border-input bg-input-a30 relative rounded-xl border [transition:color_.15s,background-color_.15s,border-color_.15s];
   backdrop-filter: blur(4px);
 
   &:focus-within {
-    @apply border-primary-a70 bg-primary-a10;
+    @apply border-ring ring-ring-a50 ring-[3px];
   }
 
   input {
-    @apply text-foreground placeholder:text-muted-foreground w-full bg-transparent py-3.5 pr-10 pl-9 text-sm focus:outline-none;
+    @apply text-foreground placeholder:text-muted-foreground h-11 w-full bg-transparent py-3.5 pr-10 pl-9 text-sm focus:outline-none;
   }
 }
 
@@ -170,7 +172,7 @@ html {
   @apply pointer-events-none absolute inset-y-0 left-3 flex items-center;
 
   img {
-    @apply h-4 w-4 opacity-40;
+    @apply size-4 opacity-40;
   }
 }
 
@@ -178,7 +180,7 @@ html {
   @apply absolute inset-y-0 right-0 flex cursor-pointer items-center border-0 bg-transparent px-3;
 
   img {
-    @apply h-4 w-4 opacity-40 [transition:opacity_.15s];
+    @apply size-4 opacity-40 [transition:opacity_.15s];
   }
 
   &:hover img {
@@ -187,7 +189,9 @@ html {
 }
 
 .login-submit {
-  @apply bg-primary text-primary-foreground hover:bg-primary-hover mt-4 w-full cursor-pointer rounded-2xl border-0 py-3.5 text-sm font-medium [transition:color_.15s,background-color_.15s,border-color_.15s];
+  /* Official default Button: h-9 equivalent at this page's larger scale,
+     rounded-md, white-on-black in dark mode. */
+  @apply bg-primary text-primary-foreground hover:bg-primary-hover mt-4 h-11 w-full cursor-pointer rounded-md border-0 text-sm font-medium [transition:color_.15s,background-color_.15s,border-color_.15s];
 }
 
 /* ── Footer ── */
@@ -209,8 +213,8 @@ html {
 /* Inner rounded image — matches sign-in.tsx absolute inset-4 rounded-3xl */
 .login-image-inner {
   @apply absolute inset-4 rounded-3xl bg-cover bg-center;
-  background-image: var(
-    --login-bg-image,
-    linear-gradient(160deg, oklch(18% 0.12 255) 0%, oklch(10% 0.04 270) 100%)
-  );
+  /* The fallback used to be two hard-coded oklch literals; it now resolves
+     through the login-left-bg token so it follows the mode like the rest of
+     the page. */
+  background-image: var(--login-bg-image, var(--login-left-bg));
 }
