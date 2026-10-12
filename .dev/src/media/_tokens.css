@@ -111,7 +111,6 @@
 
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --radius-base: 0.5rem;
 
   /* Elevation. Emitted on :root (not just inlined into the shadow-* utilities)
      so on-demand patches/*.css -- standalone entries that carry no Tailwind
@@ -338,12 +337,15 @@
 
   --shadow-sm: var(--shadow-sm);
 
-  /* Radius ladder driven by a single knob; at 0.5rem it matches the
-     Tailwind default scale (rounded-lg = 0.5rem). Tune --radius-base
-     to scale all corners for custom-radius support. */
-  --radius-sm: calc(var(--radius-base) * 0.5);
-  --radius: calc(var(--radius-base) * 0.5);
-  --radius-md: calc(var(--radius-base) * 0.75);
-  --radius-lg: var(--radius-base);
-  --radius-xl: calc(var(--radius-base) * 1.5);
+  /* Radius ladder. The official theme defines --radius: 0.625rem and derives
+     every step from it (sm 0.6x, md 0.8x, lg 1x, xl 1.4x, 2xl 1.8x), so
+     rounded-md is 8px and rounded-xl is 14px. --radius-base stays as the
+     single knob for the rest of the theme, set to the official --radius. */
+  --radius: 0.625rem;
+  --radius-base: var(--radius);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }

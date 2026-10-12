@@ -44,8 +44,10 @@
 <html lang="{{ dispatcher.lang }}" data-shadcn-media="{{ media }}">
 	<head>
 		<meta charset="utf-8">
-		<meta name="theme-color" content="#f9fafd" media="(prefers-color-scheme: light)">
-		<meta name="theme-color" content="#0c0d0f" media="(prefers-color-scheme: dark)">
+		<!-- Browser chrome colours follow the official background tokens:
+		     light --background oklch(1 0 0), dark --background oklch(0.145 0 0). -->
+		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+		<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
 		<title>{{ striptags(((boardinfo && boardinfo.hostname) ? boardinfo.hostname : '?') + ((dispatched && dispatched.title) ? (' | ' + _(dispatched.title)) : '')) }}</title>
 		<script>
 			(function () {
