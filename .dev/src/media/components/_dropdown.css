@@ -1,12 +1,16 @@
+/* shadcn Select / DropdownMenu content — LuCI .cbi-dropdown.
+   Official content: rounded-md, border, bg-popover, p-1, shadow-md, items at
+   rounded-sm with focus:bg-accent. The LuCI trigger stays a bordered input
+   look; only the list panel and its rows are restyled. */
 .cbi-dropdown {
-  @apply relative inline-flex h-fit max-w-full min-w-fit shrink-0 items-center p-0 whitespace-nowrap [transition:color_.2s,background-color_.2s,border-color_.2s];
+  @apply relative inline-flex h-9 max-w-full min-w-fit shrink-0 items-center p-0 whitespace-nowrap [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s];
 
   &[disabled] {
-    @apply pointer-events-none opacity-40;
+    @apply pointer-events-none opacity-50;
   }
 
   &:not(.btn):not(.cbi-button) {
-    @apply border-input bg-background max-w-full min-w-52.5 rounded-lg border md:max-w-100;
+    @apply border-input bg-input-a30 max-w-full min-w-52.5 rounded-md border md:max-w-100;
 
     > ul > li[placeholder] {
       @apply hidden;
@@ -49,10 +53,10 @@
     }
 
     &.dropdown {
-      @apply border-border bg-panel-bg absolute left-0 z-50 w-fit min-w-full overflow-y-auto rounded-lg border opacity-100 shadow-lg;
+      @apply border-border bg-popover absolute left-0 z-50 max-h-64 w-fit min-w-full overflow-y-auto rounded-md border p-1 opacity-100 shadow-md;
 
       > li {
-        @apply text-muted-foreground hover:bg-muted min-h-9 w-full cursor-pointer px-3 py-1.5 text-sm font-medium;
+        @apply text-foreground hover:bg-accent hover:text-accent-foreground relative min-h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm;
       }
     }
 
@@ -75,7 +79,7 @@
   }
 
   &[open] {
-    @apply border-primary ring-ring ring-2;
+    @apply border-ring;
 
     > ul.dropdown {
       @apply block w-auto max-w-none;
@@ -84,10 +88,10 @@
         @apply flex;
 
         &[selected] {
-          @apply bg-primary-a15 text-primary;
+          @apply bg-accent font-medium;
         }
         &[unselectable] {
-          @apply opacity-40;
+          @apply pointer-events-none opacity-50;
         }
 
         .hide-open {

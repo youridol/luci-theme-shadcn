@@ -48,6 +48,7 @@ const themeColorsCss = themeColors([
 // Add aliases for backward compatibility
 const aliases = [
   `  --color-sidebar-fg: var(--sidebar-foreground);`,
+  `  --color-sidebar-accent-fg: var(--sidebar-accent-foreground);`,
   `  --color-terminal-fg: var(--terminal-foreground);`,
 ].join("\n");
 

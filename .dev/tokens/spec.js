@@ -51,6 +51,7 @@ const common = {
   panel_bg: ["const", "var:surface"],
   label_surface: ["const", "var:muted"],
   focus_ring: ["alpha", "ring", 0.5],
+  accent_foreground: ["const", "var:text"],
 };
 
 // muted_foreground / sidebar_muted differ per mode: the official light value

@@ -1,7 +1,8 @@
 .alert-message {
-  /* Radius matches `.cbi-section`: the alert sits in the content layer, same
-     width and edge alignment as the sections it stacks above. */
-  @apply bg-muted text-foreground mb-4 rounded-xl border p-4 text-sm;
+  /* shadcn Alert: rounded-lg, border, px-4 py-3, text-sm, bg-card for default.
+     Radius matches the Card scale rather than `.cbi-section`, so the alert
+     reads as the same elevation as the card it stacks above. */
+  @apply border-border bg-card text-foreground mb-4 rounded-lg border px-4 py-3 text-sm;
 
   &.success {
     @apply border-success-a30 bg-success-a10 text-success;

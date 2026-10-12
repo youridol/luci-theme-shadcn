@@ -1,8 +1,12 @@
+/* shadcn Progress — LuCI progress bar.
+   Official: h-2 rounded-full track at bg-primary/20 with a solid bg-primary
+   indicator. The LuCI bar also renders its `title` as centred overlay text,
+   which the theme keeps. */
 .cbi-progressbar {
-  @apply bg-secondary relative h-2.5 w-full cursor-help overflow-hidden rounded-full;
+  @apply bg-primary-a20 relative h-2 w-full cursor-help overflow-hidden rounded-full;
   @apply before:text-foreground before:absolute before:inset-x-0 before:top-1/2 before:-translate-y-1/2 before:text-center before:text-[10px] before:leading-none before:whitespace-nowrap before:content-[attr(title)];
 
   > div {
-    @apply from-progress-bar-start to-progress-bar-end h-full bg-gradient-to-r [transition:width_.3s];
+    @apply bg-primary h-full [transition:width_.3s];
   }
 }

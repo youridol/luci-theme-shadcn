@@ -1,3 +1,10 @@
+/* shadcn Table — LuCI table.table.
+   Official: table is w-full text-sm with a border-b per row and no outer
+   container chrome; TableHead is h-10 px-2 text-left font-medium
+   text-foreground, TableRow hovers at bg-muted/50, TableCell is p-2.
+   This theme keeps the rounded bordered container (LuCI tables read as cards)
+   but adopts the official colour ladder: header text-foreground, hover and
+   zebra at muted, borders from --border. */
 table.table,
 .table {
   @apply border-border mb-4 w-full border-separate border-spacing-0 overflow-visible rounded-lg border text-sm max-md:block max-md:rounded-none max-md:border-0 max-md:shadow-none;
@@ -24,7 +31,7 @@ table.table,
   }
 
   .cbi-section-table-titles.named {
-    @apply before:bg-label-surface before:rounded-tl-lg;
+    @apply before:bg-muted before:rounded-tl-lg;
   }
 
   tbody,
@@ -34,7 +41,7 @@ table.table,
 
   tr,
   .tr {
-    @apply hover:bg-label-surface max-md:border-border [transition:background-color_.2s] max-md:flex max-md:flex-wrap max-md:border-b max-md:px-2 max-md:py-2;
+    @apply hover:bg-muted max-md:border-border [transition:background-color_.15s] max-md:flex max-md:flex-wrap max-md:border-b max-md:px-2 max-md:py-2;
 
     &:first-child {
       &:not([data-title]) {
@@ -65,16 +72,16 @@ table.table,
     }
 
     &.cbi-rowstyle-1 {
-      @apply bg-panel-bg;
+      @apply bg-card;
     }
     &.cbi-rowstyle-2 {
-      @apply bg-label-surface-a50;
+      @apply bg-muted-a30;
     }
   }
 
   th,
   .th {
-    @apply border-border bg-label-surface border-b px-3 py-2.5 text-left text-sm font-medium max-md:hidden;
+    @apply border-border bg-muted text-foreground h-10 border-b px-3 py-2.5 text-left text-sm font-medium max-md:hidden;
 
     &[width="100%"] {
       @apply w-full;
@@ -84,7 +91,7 @@ table.table,
     }
 
     &[data-sortable-row="true"] {
-      @apply hover:bg-label-surface cursor-pointer select-none after:ml-0.5 after:text-xs;
+      @apply hover:bg-accent cursor-pointer select-none after:ml-0.5 after:text-xs;
       &[data-sort-direction="asc"] {
         @apply after:content-['▲'];
       }

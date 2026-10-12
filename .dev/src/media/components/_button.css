@@ -1,13 +1,18 @@
+/* shadcn Button — LuCI button variants.
+   Official default variant in dark mode is white-on-black: bg-primary is the
+   near-white oklch(0.922 0 0) and primary-foreground the near-black
+   oklch(0.205 0 0), so every "primary action" surface below is a white button.
+   Sizing follows the official scale: h-9 default, h-8 sm, rounded-md, gap-2. */
 button,
 input[type="button"],
 input[type="submit"],
 input[type="reset"],
 .btn,
 .cbi-button {
-  @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium [transition:color_.2s,background-color_.2s,border-color_.2s];
+  @apply inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium whitespace-nowrap [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s];
 
   &[disabled] {
-    @apply cursor-not-allowed opacity-40;
+    @apply pointer-events-none cursor-not-allowed opacity-50;
   }
 
   .td & {
@@ -15,6 +20,7 @@ input[type="reset"],
   }
 }
 
+/* secondary — the official "outline/ghost" grey used for plain actions */
 .btn,
 .cbi-button,
 .cbi-button-default,
@@ -23,28 +29,31 @@ input[type="reset"],
 .cbi-button-link,
 .cbi-button-up,
 .cbi-button-down {
-  @apply border-secondary bg-secondary text-secondary-foreground hover:bg-secondary-a80;
+  @apply border-input bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground;
 }
 
 .drag-handle {
-  @apply border-muted bg-muted text-muted-foreground hover:bg-muted-a80;
+  @apply border-border bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground;
 }
 
+/* primary — white button on black in dark mode */
 .btn.primary,
 .cbi-button-action,
 .cbi-button-apply,
 .cbi-button-reload,
 .cbi-button-add,
 .cbi-button-edit {
-  @apply border-primary bg-primary text-primary-foreground hover:bg-primary-a90;
+  @apply border-primary bg-primary text-primary-foreground hover:bg-primary-hover;
 }
 
+/* positive/save — a tinted primary, kept distinct from the solid white one */
 .cbi-button-positive,
 .cbi-button-fieldadd,
 .cbi-button-save {
   @apply border-primary-a25 bg-primary-a15 text-primary hover:bg-primary-a25;
 }
 
+/* destructive — official destructive red */
 .cbi-button-negative,
 .cbi-section-remove .cbi-button,
 .cbi-button-reset,

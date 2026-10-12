@@ -1,5 +1,10 @@
+/* shadcn Card + LuCI section container.
+   Official Card: rounded-xl, border, bg-card, shadow-sm, py-6, gap-6.
+   Section headings keep the LuCI structure; the title uses the official
+   CardTitle sizing (leading-none font-semibold) and descriptions use
+   text-muted-foreground. */
 .cbi-section {
-  @apply border-panel-border bg-panel-bg mb-4 overflow-visible rounded-xl border p-4;
+  @apply border-border bg-card mb-4 overflow-visible rounded-xl border p-4 shadow-xs;
 
   &[data-tab-title] {
     @apply m-0 p-0;
@@ -15,7 +20,7 @@
       @apply flex-1;
 
       .label[data-clickable] {
-        @apply bg-label-surface text-foreground hover:bg-muted inline-flex size-6 cursor-pointer items-center justify-center rounded p-0 active:scale-95;
+        @apply bg-muted text-foreground hover:bg-accent inline-flex size-6 cursor-pointer items-center justify-center rounded-md p-0 active:scale-95;
       }
 
       span[data-indicator="poll-status"] {
@@ -37,7 +42,7 @@
   }
 
   h3 {
-    @apply border-border text-foreground mb-3 border-b pb-3 text-base font-semibold;
+    @apply border-border text-foreground mb-3 border-b pb-3 text-base leading-none font-semibold;
   }
 
   .cbi-section-create {
@@ -56,15 +61,16 @@
   }
 }
 
+/* LuCI interface box — a small Card with a header strip. */
 .ifacebox {
-  @apply border-border bg-panel-bg relative inline-flex min-w-32 flex-col items-stretch overflow-visible rounded-lg border text-center text-sm leading-5;
+  @apply border-border bg-card relative inline-flex min-w-32 flex-col items-stretch overflow-visible rounded-lg border text-center text-sm leading-5;
 
   #cbi-network-interface & {
     @apply md:min-w-38;
   }
 
   .ifacebox-head {
-    @apply border-border bg-label-surface text-foreground w-full rounded-t-lg border-b px-3 py-2 text-center text-sm font-semibold [transition:color_.2s,background-color_.2s,border-color_.2s];
+    @apply border-border bg-muted text-foreground w-full rounded-t-lg border-b px-3 py-2 text-center text-sm font-semibold [transition:color_.15s,background-color_.15s,border-color_.15s];
 
     &[style*="--zone-color-rgb"] {
       @apply bg-[rgb(var(--zone-color-rgb),.65)]!;
@@ -99,6 +105,7 @@
       .cbi-tooltip {
         @apply delay-200;
       }
+
       .nowrap {
         @apply inline-block;
       }
