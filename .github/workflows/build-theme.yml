@@ -56,13 +56,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.FEED_DISPATCH_TOKEN }}
         run: |
+          # 这是一个跨仓库动作：通知上游 eamonxg/openwrt-cloud 重建软件源。
+          # 缺 token 时跳过而非失败 —— Release 与 ipk 都已经产出，feed 只是
+          # 让新版本更快出现在软件源里（该源本身有每日计划任务兜底）。
+          # 要让 tag 立刻进 feed，就给本仓库配 FEED_DISPATCH_TOKEN：一个对
+          # eamonxg/openwrt-cloud 有 Contents 读写权限的 fine-grained PAT。
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::FEED_DISPATCH_TOKEN is not set, so openwrt-cloud was never told about this release."
-            echo "The feed only rebuilds ahead of its daily schedule on this dispatch — without it the tag" >&2
-            echo "ships to GitHub Releases but never reaches the feed. Create a fine-grained PAT" >&2
-            echo "scoped to eamonxg/openwrt-cloud with Contents: read and write, then store it as" >&2
-            echo "the FEED_DISPATCH_TOKEN secret in this repository." >&2
-            exit 1
+            echo "::notice::FEED_DISPATCH_TOKEN is not set; skipping the openwrt-cloud dispatch."
+            echo "The release and its packages are unaffected — the feed still picks the new version"
+            echo "up on its own daily schedule. Set FEED_DISPATCH_TOKEN to make it immediate."
+            exit 0
           fi
           gh api repos/eamonxg/openwrt-cloud/dispatches \
             -f event_type=package-released \
