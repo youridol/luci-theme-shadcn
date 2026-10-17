@@ -34,9 +34,13 @@ Patch sources sit under `src/` (`src/media/patches/`, `src/resource/patches/`), 
 
 ## `admin-status-overview` — online-host drawer
 
-The Overview page renders `#status_leases` with each host as plain text. This patch turns the host name and the IPv4 cell into buttons that open a right-hand drawer listing that host's live connections (13 columns: app, protocol, line, external address, domain, source port, destination, destination port, up/down rate, cumulative up/down, state).
+The Overview page renders `#status_leases` with each host as plain text. This patch makes the host name and the IPv4 cell open a right-hand drawer listing that host's live connections (13 columns: app, protocol, line, external address, domain, source port, destination, destination port, up/down rate, cumulative up/down, state).
 
-Data comes from the theme's own rpcd object (`root/usr/share/rpcd/ucode/shadcn.uc` + `root/usr/share/ucode/shadcn/conntrack.uc`, ACL in `root/usr/share/rpcd/acl.d/shadcn.json`), **not** from `luci-app-trafficctl` — that package only offers per-host totals. The backend parses `/proc/net/nf_conntrack`, fingerprints the app by destination port, resolves domains from local dnsmasq leases, and computes rates as byte deltas between two samples.
+Data comes from the theme's own rpcd object (`root/usr/share/rpcd/ucode/shadcn.uc` + `root/usr/share/ucode/shadcn/conntrack.uc`, ACL in `root/usr/share/rpcd/acl.d/shadcn.json`), **not** from `luci-app-trafficctl` — that package only offers per-host totals. The backend parses `/proc/net/nf_conntrack`, fingerprints the app by destination port, resolves names through dnsmasq, and computes rates as byte deltas between two samples.
+
+The 域名 column asks dnsmasq (`nslookup <ip> 127.0.0.1`), which resolves both lease names and public PTR records — on the reference device it returns `vivo-Y52s`, `LEDE`, `pw-in-f188.1e100.net` and `a184-84-58-174.deploy.static.akamaitechnologies.com`. Lookups are capped at 16 addresses per call, and an address with no PTR keeps showing itself rather than a fabricated name.
+
+The host entries are **markers, not elements**: a cell gets `data-shadcn-host` (plus `data-shadcn-addr` per address in a multi-address cell), the stylesheet supplies the link affordance, and one delegated listener on `document` opens the drawer. Wrapping the text in a `<button>` looked simpler, but LuCI rewrites every row about every five seconds, which erased the buttons and left them as plain text for 436–493 ms each time — and once produced nested buttons with duplicated labels (`192.168.3.2192.168.3`). With markers a rewrite only drops attributes, which the observer restores synchronously. Do not defer that restore to `requestAnimationFrame`: one repaint emits hundreds of records, and waiting a frame reintroduces a ~450 ms gap.
 
 Two rpcd details are load-bearing and cost time to find:
 
