@@ -14,7 +14,7 @@
 
 'use strict';
 
-import { readfile } from 'fs';
+import { readfile, popen } from 'fs';
 import { parseConntrack, appFor, connKey } from 'shadcn.conntrack';
 
 // rpcd 在独立进程里持有本对象，这份缓存随进程存活；连接消失后下一轮
@@ -136,6 +136,47 @@ function loadLeases() {
 	return map;
 }
 
+// 用 dnsmasq 反查一个 IPv4 地址对应的名字，取不到返回 null。
+//
+// 只认 127.0.0.1 的回答：那是本机 dnsmasq，覆盖静态租约、/etc/hosts 和
+// 本机地址。公网地址通常返回 NXDOMAIN（上游没开反查），此时如实返回
+// null，由前端显示地址本身。
+//
+// 结果形如 "vivo-Y52s.lan"，去掉 .lan 后缀更好读。
+function reverseLookup(ip) {
+	if (ip == null || match(ip, /^[0-9.]+$/) == null)
+		return null;
+
+	let out = null;
+
+	try {
+		out = popen(`nslookup ${ip} 127.0.0.1 2>/dev/null`, 'r');
+
+		if (out == null)
+			return null;
+
+		const text = out.read('all') ?? '';
+		out.close();
+
+		// 只取 "name = xxx" 那一行，避免把 "Address: 127.0.0.1" 当成结果；
+		// 顺手去掉 dnsmasq 加的 .lan 后缀，表格里更好读。
+		//
+		// 字符类必须显式列出空白：ucode 的 [^\s] 连字面字母 s 一起排除，
+		// 会把 "vivo-Y52s.lan" 截成 "vivo-Y52"。
+		const m = match(text, /name[ \t]*=[ \t]*([^ \t\r\n]+)/);
+
+		if (m == null || m[1] == null)
+			return null;
+
+		const name = replace(m[1], /\.lan$/, '');
+
+		return name != '' ? name : null;
+	} catch (e) {
+		// 反查失败不该影响连接列表
+		return null;
+	}
+}
+
 const methods = {
 	connections: {
 		// rpcd 需要显式声明参数模式，否则 req.args 永远为空 —— 参数根本
@@ -239,9 +280,28 @@ const methods = {
 			const leases = loadLeases();
 			const names = {};
 
-			for (let ip in ips)
+			for (let ip in ips) {
 				if (leases[ip] != null)
 					names[ip] = leases[ip];
+			}
+
+			// 租约没覆盖的地址再问一次 dnsmasq。它能给出静态租约、/etc/hosts
+			// 和本机地址的名字（形如 vivo-Y52s.lan），而这些都不在
+			// /tmp/dhcp.leases 里。反查走本机 127.0.0.1，实测 <1ms；
+			// 只补空缺，不覆盖已有结果。
+			const missing = [];
+
+			for (let ip in ips)
+				if (names[ip] == null && match(ip, /^[0-9.]+$/))
+					push(missing, ip);
+
+			// 一次最多查 16 个，避免一屏几百条连接时 fork 太多进程
+			for (let ip in (length(missing) > 16 ? slice(missing, 0, 16) : missing)) {
+				const name = reverseLookup(ip);
+
+				if (name != null)
+					names[ip] = name;
+			}
 
 			return { names: names };
 		}
