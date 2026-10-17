@@ -90,8 +90,16 @@
         &[selected] {
           @apply bg-accent font-medium;
         }
+        /* luci-base tags two kinds of rows `unselectable`: the trailing custom
+           entries row (the <li> wrapping `.create-item-input`, see ui.js
+           Dropdown#render) and choice rows that must not be toggled again.
+           They stay un-toggleable, not un-reachable: `pointer-events-none`
+           here was inherited by the create input, so the custom entry could
+           never take focus and typing into it did nothing. toggleItem() already
+           refuses these rows on its own, and the row's own click handler is
+           what focuses the input. */
         &[unselectable] {
-          @apply pointer-events-none opacity-50;
+          @apply cursor-default opacity-70;
         }
 
         .hide-open {

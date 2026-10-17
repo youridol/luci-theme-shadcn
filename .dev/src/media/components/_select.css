@@ -2,7 +2,16 @@
    (#8888a0 light / #8c8ca8 dark); it now inherits currentColor via a mask, so
    it follows --muted-foreground and the input's own text colour instead. */
 select {
-  @apply border-input bg-input-a30 text-foreground focus-visible:border-ring focus-visible:ring-ring-a50 relative h-9 max-w-full min-w-52.5 appearance-none rounded-md border bg-none pr-9 pl-3 text-sm shadow-xs [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s] focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:max-w-100;
+  @apply border-input bg-popover text-foreground focus-visible:border-ring focus-visible:ring-ring-a50 relative h-9 max-w-full min-w-52.5 appearance-none rounded-md border pr-9 pl-3 text-sm shadow-xs [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s] focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:max-w-100;
+
+  /* Two layers, not a flat bg-input-a30. The UA paints a native <select>'s
+     option list from this element's own background-color, and a translucent
+     one composites over white: the dark-mode popup came out white while its
+     rows inherited --foreground, so every choice but the OS-highlighted one
+     was invisible. --popover is the opaque base (what the popup inherits) and
+     the input tint rides on top as a gradient, leaving the trigger's look
+     unchanged. */
+  background-image: linear-gradient(var(--input-a30), var(--input-a30));
 
   /* Chevron drawn as a mask so it inherits currentColor (no hard-coded hex).
      The official trigger keeps its chevron at opacity-50 of the text colour,
@@ -11,4 +20,11 @@ select {
     @apply text-muted-foreground pointer-events-none absolute right-3 block size-4 bg-current content-[''];
     @apply [mask:url('@assets/icons/chevron-down.svg')_center/contain_no-repeat];
   }
+}
+
+/* The option list itself is UA chrome, where background-color and color are
+   the only properties that take effect — state them so a list never depends on
+   whatever bed the platform picked. */
+option {
+  @apply bg-popover text-foreground;
 }
