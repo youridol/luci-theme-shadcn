@@ -137,16 +137,23 @@ export function parseConnLine(line) {
 	if (length(pairs) < 4)
 		return null;
 
-	// 前四项是发起方向，接下来四项是应答方向
+	// 一行里有两条完整元组，各自由 src/dst/sport/dport/packets/bytes 组成：
+	//   <orig...> <reply...> [标记]
+	// 不能按“前 4 项 / 后 4 项”切 —— 每组是 6 个键，按 4 切会把 packets
+	// 和 bytes 错配到另一个方向（表现为 bytes_out 恒为 0）。
+	//
+	// 第二次出现的 src= 就是应答方向的起点，用它的位置切开两组。
 	const orig = {};
 	const reply = {};
+	let seenSrc = 0;
 
-	for (let n = 0; n < length(pairs); n++) {
-		const p = pairs[n];
+	for (let p in pairs) {
+		if (p.key == 'src')
+			seenSrc++;
 
-		if (n < 4)
+		if (seenSrc <= 1)
 			orig[p.key] = p.val;
-		else if (n < 8)
+		else
 			reply[p.key] = p.val;
 	}
 
