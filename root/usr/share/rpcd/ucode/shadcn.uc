@@ -62,8 +62,60 @@ function forHost(list, ip) {
 	return out;
 }
 
-// dnsmasq 租约里的 IP -> 主机名。/tmp/dhcp.leases 的格式：
-//   <过期时间> <MAC> <IP> <主机名> <客户端标识>
+// 读本机 LAN 的 IPv4 地址（完整地址，例如 192.168.3.254）。
+//
+// 只认 /etc/config/network 里 lan 段的 ipaddr —— 这是静态配置的权威来源。
+// 取不到就返回 null，由调用方退化处理，而不是猜一个地址出来。
+function lanAddress() {
+	const text = readfile('/etc/config/network');
+
+	if (text == null)
+		return null;
+
+	let inLan = false;
+
+	for (let raw in split(text, '\n')) {
+		const line = trim(raw);
+
+		// match() 返回的是数组（或 null），不是布尔值。直接把它当条件用会
+		// 在“匹配到”时得到 [""]，虽然为真，但赋值给 inLan 后再参与逻辑
+		// 容易出错（空匹配的结果是 null，看起来像没匹配到）。统一转成布尔。
+		if (match(line, /^config\s+interface\s+/)) {
+			inLan = match(line, /^config\s+interface\s+'lan'$/) != null;
+			continue;
+		}
+
+		if (inLan && match(line, /^config\s+/))
+			break;
+
+		if (inLan) {
+			const m = match(line, /^option\s+ipaddr\s+'([0-9.]+)'$/);
+
+			if (m != null && m[1] != null)
+				return m[1];
+		}
+	}
+
+	return null;
+}
+
+// 读本机 LAN 的 IPv4 网段（形如 192.168.3），用于区分连接的对端是内网还是
+// 公网，避免前端为拿网段额外申请 network 接口的权限。
+function lanPrefix() {
+	const addr = lanAddress();
+
+	if (addr == null)
+		return null;
+
+	const p = split(addr, '.');
+
+	return length(p) == 4 ? `${p[0]}.${p[1]}.${p[2]}` : null;
+}
+
+// 地址 -> 名称。来源是 dnsmasq 租约里 DHCP 客户端上报的主机名。
+//
+// 只反查本地已知的：公网地址在这里查不到，前端据此显示 “—”。要显示
+// 公网域名得做主动 DNS 反查，那会引入联网与延迟，不在本方法的职责内。
 function loadLeases() {
 	const map = {};
 	const text = readfile('/tmp/dhcp.leases');
@@ -73,54 +125,15 @@ function loadLeases() {
 
 	for (let line in split(text, '\n')) {
 		const f = split(trim(line), ' ');
+		const ip = f[2];
+		const name = f[3];
 
-		if (length(f) >= 4 && f[2] != '' && f[3] != '')
-			map[f[2]] = f[3];
+		// 丢掉通配名 "*"：它表示客户端没上报主机名，显示地址更有用
+		if (length(f) >= 4 && ip != '' && name != '' && name != '*')
+			map[ip] = name;
 	}
 
 	return map;
-}
-
-// 读本机 LAN 的 IPv4 网段（形如 192.168.3）。用于区分连接的对端是内网
-// 还是公网，避免前端为拿网段额外申请 network 接口的权限。
-//
-// 只认 /etc/config/network 里 lan 段的 ipaddr —— 这是静态配置的权威来源。
-// 取不到就返回 null，由前端退化为按私有地址段判断，而不是猜一个网段出来。
-function lanPrefix() {
-	const text = readfile('/etc/config/network');
-
-	if (text == null)
-		return null;
-
-	// 逐行扫：先定位 config interface 'lan'，再取其后的第一个 option ipaddr。
-	// 不用一条长正则跨行匹配 —— ucode 的正则不支持非捕获组，跨行写法既
-	// 容易写错也难读。
-	let inLan = false;
-
-	for (let raw in split(text, '\n')) {
-		const line = trim(raw);
-
-		if (match(line, /^config\s+interface\s+/)) {
-			inLan = match(line, /^config\s+interface\s+'lan'$/);
-			continue;
-		}
-
-		// 进入下一个 config 段就说明 lan 段结束了
-		if (inLan && match(line, /^config\s+/))
-			break;
-
-		if (inLan) {
-			const m = match(line, /^option\s+ipaddr\s+'([0-9.]+)'$/);
-
-			if (m != null && m[1] != null) {
-				const p = split(m[1], '.');
-
-				return length(p) == 4 ? `${p[0]}.${p[1]}.${p[2]}` : null;
-			}
-		}
-	}
-
-	return null;
 }
 
 const methods = {
