@@ -45,6 +45,24 @@ Two rpcd details are load-bearing and cost time to find:
 
 The drawer polls on its own timer (default 1 s, presets 1–5 s in the toolbar). Rates read `—` on the first sample by design — one fetch can only yield cumulative totals. Connections the kernel does not account bytes for show `—` rather than a fake `0 B/s`.
 
+Three backend details cost time to find, and all three fail *silently* rather than erroring:
+
+- rpcd `args` needs the literal `'String'`. A lowercase variable name still renders a `String` signature but drops the argument, leaving `req.args` empty.
+- ucode has **no function hoisting**. A forward call throws at runtime and the caller swallows it, so a correct lease file produced an empty name map. Keep `loadLeases()` below `lanAddress()`.
+- `match()` returns an array or `null`, not a boolean. `inLan = match(...)` then `if (inLan && ...)` behaves inconsistently; compare against `null` explicitly.
+
+## Debugging a page that suddenly loses ubus access
+
+Never probe the daemon with `rpcd -h` on the device. BusyBox's `rpcd` treats `-h` as a request that **blocks**, leaving a process stuck on the ubus socket; every later `uci/get` from the browser then fails with `ubus code 6: 没有权限` on many unrelated pages, which looks exactly like a broken ACL. If that symptom appears:
+
+```sh
+ps | grep "[r]pcd"      # more than one rpcd line means a stuck probe
+```
+
+Kill the extra PIDs by number (`pkill -f` does not match them, since the process name is just `rpcd`), then `/etc/init.d/rpcd restart`. Confirm with one rpcd process and `ubus call uci get '{"config":"luci"}'` succeeding.
+
+To tell a theme regression from this, remove the theme's rpcd files and re-test: if `uci/get` still fails, the cause is environmental, not the ACL.
+
 ## Adding / removing a theme patch
 
 Create the file, run `pnpm build`, verify the built file is small. Removal is symmetric — delete the file, rebuild.
