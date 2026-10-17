@@ -337,8 +337,12 @@
     const cells = {
       app: c.app ?? "—",
       proto: (c.proto || "").toUpperCase(),
-      // 线路按方向判定：本机发起走 LAN 侧出站，其余是外部连入
-      line: isLocal ? "LAN" : "WAN",
+      // 线路 = 这条连接实际走的哪一侧。
+      //   内网对端 -> LAN（流量没出路由器）
+      //   公网对端 -> WAN（经 WAN 出口）
+      // 老写法按“谁发起”判定，于是每一台正常上网的主机都显示 LAN，
+      // 即使它的流量明明走的 WAN，这一列因此没有信息量。
+      line: peerIsLan ? "LAN" : "WAN",
       ext: ext,
       domain: domainCache.get(peer) ?? "—",
       sport: String(c.sport ?? ""),
