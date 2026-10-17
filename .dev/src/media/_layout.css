@@ -75,9 +75,15 @@ html[data-sidebar-collapsed="true"] #sidebar {
   @apply flex-1 overflow-x-hidden overflow-y-auto px-2 py-2;
 }
 
+/* Row rhythm follows the reference shell. Measured on that screenshot the
+   active row is 32px tall and row centres sit 36px apart, a pitch/row ratio of
+   1.125. Anchoring on the row (this theme's rows are 31.5px) puts the pitch at
+   35.4px, so the 4px of air between neighbours becomes mb-1 (3.5px at the 14px
+   root that `html`'s `text-sm` sets). Expressing the gap in rem — not fixed px
+   — keeps the ratio at any root size. */
 .sidebar-nav-item,
 .sidebar-accordion-item {
-  @apply mb-0.5;
+  @apply mb-1;
 
   /* Official SidebarMenuButton active: the same surface as hover
      (bg-sidebar-accent) plus font-medium, rather than a separate tinted
@@ -150,7 +156,11 @@ html[data-sidebar-collapsed="true"] #sidebar {
 }
 
 .sidebar-sub-item {
-  @apply mb-0.5;
+  /* Same 3.5px of air as the top level, so both lists share one rhythm and the
+     nested list reads as part of the same scale. Sub rows are shorter (28px vs
+     31.5px), so their centre pitch lands at 31.5px rather than 35px — that
+     follows from the row height, not from a different gap. */
+  @apply mb-1;
 
   /* Official SidebarMenuSubButton active: bg-sidebar-accent + font-medium. */
   &.active .sidebar-sub-link {
