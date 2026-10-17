@@ -24,6 +24,14 @@
 @source not "../../tests/*.js";
 @source not "../../docs/*.md";
 
+/* Page patches build their own stylesheet entries and are plain CSS by design
+   (see .dev/docs/patches.md). Their sources still live under src/, so Tailwind's
+   automatic detection picks class-like strings out of patch JS — a
+   createElement("table") became a stray `.table` utility in this file. Neither
+   directory renders markup that main.css has to cover. */
+@source not "../media/patches/**/*.css";
+@source not "../resource/patches/**/*.js";
+
 @custom-variant dark (&:where([data-darkmode=true], [data-darkmode=true] *));
 
 @import "./_base.css";

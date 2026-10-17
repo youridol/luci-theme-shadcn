@@ -1,0 +1,278 @@
+/* Shadcn online-host drawer — styles for the Overview page patch.
+
+   Plain CSS by design (see .dev/docs/patches.md): patches omit the `@apply`
+   boilerplate and reach the theme's values through the :root custom
+   properties, so every colour, radius and shadow below follows the active
+   light/dark token set instead of hardcoding a value.
+
+   The drawer is a right-hand slide-over: it never pushes the page, so it can
+   sit above the sidebar without changing the shell layout. */
+
+/* ── trigger inside the 在线主机 table ───────────────────────────────── */
+
+.shadcn-host-entry {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--primary);
+  cursor: pointer;
+  text-align: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--primary-a60);
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+
+.shadcn-host-entry:hover {
+  color: var(--primary-hover);
+  text-decoration-color: currentColor;
+}
+
+.shadcn-host-entry:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── drawer shell ───────────────────────────────────────────────────── */
+
+.shadcn-drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.shadcn-drawer-root.is-open {
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.shadcn-drawer-mask {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay-base-a50);
+  opacity: 0;
+  transition: opacity 0.2s var(--ease-out);
+}
+
+.shadcn-drawer-root.is-open .shadcn-drawer-mask {
+  opacity: 1;
+}
+
+.shadcn-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 96vw);
+  background: var(--background);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(100%);
+  transition: transform 0.24s var(--ease-out);
+}
+
+.shadcn-drawer-root.is-open .shadcn-drawer {
+  transform: translateX(0);
+}
+
+/* 抽屉打开时锁住页面滚动，避免背后内容跟着滚 */
+html.shadcn-drawer-lock,
+html.shadcn-drawer-lock body {
+  overflow: hidden;
+}
+
+/* ── header ─────────────────────────────────────────────────────────── */
+
+.shadcn-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shadcn-drawer-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shadcn-drawer-kicker {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.shadcn-drawer-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadcn-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.shadcn-drawer-interval {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.shadcn-drawer-interval select {
+  height: 26px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.shadcn-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+
+.shadcn-drawer-close:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+.shadcn-drawer-close:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.shadcn-drawer-meta {
+  flex-shrink: 0;
+  padding: 8px 18px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── body / table ───────────────────────────────────────────────────── */
+
+.shadcn-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.shadcn-drawer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-drawer-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.shadcn-drawer-table tbody td {
+  padding: 6px 10px;
+  white-space: nowrap;
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+}
+
+.shadcn-drawer-table tbody tr:hover td {
+  background: var(--accent);
+}
+
+/* 地址列可能很长（尤其 IPv6），允许换行而不是撑破表格 */
+.shadcn-drawer-cell-src,
+.shadcn-drawer-cell-dst,
+.shadcn-drawer-cell-ext {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shadcn-drawer-cell-domain {
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted-foreground);
+}
+
+.shadcn-drawer-cell-up,
+.shadcn-drawer-cell-down,
+.shadcn-drawer-cell-totalUp,
+.shadcn-drawer-cell-totalDown {
+  text-align: right;
+}
+
+.shadcn-drawer-cell-state {
+  color: var(--muted-foreground);
+}
+
+.shadcn-drawer-empty {
+  margin: 0;
+  padding: 24px 18px;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+/* 窄屏（手机）：抽屉占满整宽，表头仍然吸顶 */
+@media (max-width: 767px) {
+  .shadcn-drawer {
+    width: 100vw;
+    border-left: 0;
+  }
+
+  .shadcn-drawer-table {
+    font-size: 0.6875rem;
+  }
+
+  .shadcn-drawer-table thead th,
+  .shadcn-drawer-table tbody td {
+    padding: 6px 8px;
+  }
+}

@@ -30,6 +30,21 @@ The same `lsdir()` sweep loads `patches/<page>.js` as `<script defer>` after the
 
 A JS patch must register `window.luciPatches[<stem>] = { mount, unmount }` and mount itself once at eval: the [client-side router](router.md) drives it across same-document navigations and a plain script would otherwise keep running on pages that are gone. `header.ut` also emits every installed patch file as `body[data-patches]` and marks its own `<link>`/`<script>` tags `data-luci-patch` so the router can enable/disable them per page.
 
+Patch sources sit under `src/` (`src/media/patches/`, `src/resource/patches/`), inside Tailwind's automatic source scan, so a plain string like `createElement("table")` becomes a `.table` candidate emitted into `main.css`. `main.css` therefore excludes both patch directories with `@source not`; keep them excluded when adding a patch that builds DOM.
+
+## `admin-status-overview` — online-host drawer
+
+The Overview page renders `#status_leases` with each host as plain text. This patch turns the host name and the IPv4 cell into buttons that open a right-hand drawer listing that host's live connections (13 columns: app, protocol, line, external address, domain, source port, destination, destination port, up/down rate, cumulative up/down, state).
+
+Data comes from the theme's own rpcd object (`root/usr/share/rpcd/ucode/shadcn.uc` + `root/usr/share/ucode/shadcn/conntrack.uc`, ACL in `root/usr/share/rpcd/acl.d/shadcn.json`), **not** from `luci-app-trafficctl` — that package only offers per-host totals. The backend parses `/proc/net/nf_conntrack`, fingerprints the app by destination port, resolves domains from local dnsmasq leases, and computes rates as byte deltas between two samples.
+
+Two rpcd details are load-bearing and cost time to find:
+
+- Each method needs `args: { name: 'String' }`. Writing a lowercase variable name there still shows a `String` signature, but **drops the argument** — `req.args` stays empty. Only the `String` literal works.
+- From the browser, call it with `rpc.declare({ object, method, params: [...] })` and **positional** arguments. `L.require('fs').exec('/ubus', ...)` is rejected with `PermissionError`; `rpc.declare` is the path that carries the session.
+
+The drawer polls on its own timer (default 1 s, presets 1–5 s in the toolbar). Rates read `—` on the first sample by design — one fetch can only yield cumulative totals. Connections the kernel does not account bytes for show `—` rather than a fake `0 B/s`.
+
 ## Adding / removing a theme patch
 
 Create the file, run `pnpm build`, verify the built file is small. Removal is symmetric — delete the file, rebuild.

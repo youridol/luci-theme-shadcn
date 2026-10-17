@@ -1,0 +1,13 @@
+{
+	"shadcn": {
+		"description": "luci-theme-shadcn: per-host connection details for the online-host drawer",
+		"read": {
+			"ubus": {
+				"shadcn": ["connections", "resolve"]
+			},
+			"file": {
+				"/tmp/dhcp.leases": ["read"]
+			}
+		}
+	}
+}
