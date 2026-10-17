@@ -84,6 +84,29 @@
     return node;
   }
 
+  // 从一个单元格的文本里取第一个地址。LuCI 会把一台主机的多个 IPv4
+  // 直接拼在同一个格子里（两个 <div>，中间没有分隔符），textContent
+  // 读出来就是 "192.168.3.194192.168.3.233" —— 所以按正则抠第一个地址，
+  // 而不是按空白切分。
+  function firstAddress(text, pattern) {
+    if (!text) return null;
+    const src = String(text);
+    // IPv4 优先逐段匹配；IPv6 用更宽的模式
+    const re = pattern === "v4"
+      ? /(?:^|[^0-9])([0-9]{1,3}(?:\.[0-9]{1,3}){3})/g
+      : /(?:^|[^0-9a-f:])([0-9a-f]{1,4}(?::[0-9a-f]{0,4}){2,})/gi;
+    const m = re.exec(src);
+    if (!m) return null;
+    const addr = m[1];
+    if (addr === "-") return null;
+    if (pattern === "v4") {
+      // 逐段校验范围，避免把 "999.1.1.1" 当成地址
+      const parts = addr.split(".").map(Number);
+      if (parts.some((n) => n > 255)) return null;
+    }
+    return addr;
+  }
+
   // ── table enrichment ─────────────────────────────────────────────────
 
   // 取表头文字到列序号的映射。没有 thead 时退回第一行。
@@ -100,24 +123,36 @@
     return map;
   }
 
-  // 把一台主机的主机名与 IPv4 变成可点击入口。
+  // 把 IPv4 单元格里的每个地址都变成可点击入口。
   //
-  // 只包裹文本、不替换整个单元格：图标、静态租约按钮等既有内容保持原样。
+  // 一个单元格里可能有多条地址（LuCI 为每个地址放一个 <div>），必须逐个
+  // 处理：整格只建一个按钮会把 "192.168.3.194" 和 "192.168.3.233" 拼成
+  // 一个不存在的地址。没有子元素时退回处理整格文本。
   function makeEntry(cell, host) {
     if (!cell || !host) return;
     if (cell.querySelector("[data-shadcn-host-entry]")) return;
 
-    const btn = el("button", "shadcn-host-entry", (cell.textContent || "").trim());
-    btn.type = "button";
-    btn.dataset.shadcnHostEntry = host;
-    btn.title = "查看 " + host + " 的实时连接";
-    btn.addEventListener("click", function (ev) {
-      ev.preventDefault();
-      openDrawer(host);
-    });
+    const parts = cell.querySelectorAll("div, span");
+    const targets = parts.length ? [...parts] : [cell];
 
-    cell.textContent = "";
-    cell.appendChild(btn);
+    for (const node of targets) {
+      if (node.querySelector?.("[data-shadcn-host-entry]")) continue;
+      const text = (node.textContent || "").trim();
+      const addr = firstAddress(text, "v4");
+      if (!addr) continue;
+
+      const btn = el("button", "shadcn-host-entry", text);
+      btn.type = "button";
+      btn.dataset.shadcnHostEntry = addr;
+      btn.title = "查看 " + addr + " 的实时连接";
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        openDrawer(addr);
+      });
+
+      node.textContent = "";
+      node.appendChild(btn);
+    }
   }
 
   function enrichTable() {
@@ -141,10 +176,12 @@
       const nameCell = iName != null ? cells[iName] : null;
       const v4Cell = iV4 != null ? cells[iV4] : null;
 
-      const v4 = v4Cell ? (v4Cell.textContent || "").trim() : "";
-      const v6 = iV6 != null ? (cells[iV6].textContent || "").trim() : "";
+      // 一台主机可能有多个地址，单元格文本会粘连；只取第一个可用地址，
+      // 否则拼出来的字符串既查不到连接，也不是一个真实地址。
+      const v4 = firstAddress(v4Cell?.textContent, "v4");
+      const v6 = firstAddress(iV6 != null ? cells[iV6].textContent : "", "v6");
       // 主机的可查询地址：优先 IPv4，没有就用 IPv6
-      const host = v4 && v4 !== "-" ? v4 : v6 && v6 !== "-" ? v6 : null;
+      const host = v4 ?? v6;
       if (!host) continue;
 
       if (nameCell) {
@@ -177,8 +214,7 @@
 
       if (v4Cell) {
         const existing = v4Cell.querySelector("[data-shadcn-host-entry]");
-        if (!existing && v4 && v4 !== "-")
-          makeEntry(v4Cell, v4);
+        if (!existing && v4) makeEntry(v4Cell, v4);
       }
     }
 
