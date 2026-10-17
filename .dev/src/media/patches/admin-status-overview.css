@@ -10,28 +10,37 @@
 
 /* ── trigger inside the 在线主机 table ───────────────────────────────── */
 
-.shadcn-host-entry {
-  appearance: none;
-  background: none;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  font: inherit;
+/* The patch never inserts elements here — LuCI rewrites these cells every few
+   seconds, so an inserted button is erased and only re-appears on the next
+   pass, leaving a visible half-second gap where the link turns back into plain
+   text. Instead the cell carries data-shadcn-host and this file supplies the
+   affordance; a delegated click handler does the rest. */
+
+.shadcn-host-cell {
   color: var(--primary);
   cursor: pointer;
-  text-align: inherit;
   text-decoration: underline;
   text-decoration-color: var(--primary-a60);
   text-underline-offset: 2px;
   transition: color 0.15s;
 }
 
-.shadcn-host-entry:hover {
+.shadcn-host-cell:hover,
+.shadcn-host-cell [data-shadcn-addr]:hover {
   color: var(--primary-hover);
   text-decoration-color: currentColor;
 }
 
-.shadcn-host-entry:focus-visible {
+/* 一个格子里有多条地址时，每条各自可点 */
+.shadcn-host-cell [data-shadcn-addr] {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--primary-a60);
+  text-underline-offset: 2px;
+}
+
+/* 键盘可达：单元格本身不在 tab 序列里，用焦点环表明可操作 */
+.shadcn-host-cell:focus-within {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 2px;

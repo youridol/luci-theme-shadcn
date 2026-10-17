@@ -123,36 +123,39 @@
     return map;
   }
 
-  // 把 IPv4 单元格里的每个地址都变成可点击入口。
+  // 把主机名格与 IPv4 格标记成可点击入口。
   //
-  // 一个单元格里可能有多条地址（LuCI 为每个地址放一个 <div>），必须逐个
-  // 处理：整格只建一个按钮会把 "192.168.3.194" 和 "192.168.3.233" 拼成
-  // 一个不存在的地址。没有子元素时退回处理整格文本。
-  function makeEntry(cell, host) {
+  // 这里刻意不插入任何元素：LuCI 每 5 秒重写整行内容，插进去的按钮会被抹掉，
+  // 要等下一轮补回 —— 实测空窗 437~515ms，用户能看到链接变回普通文字、再变
+  // 回来。改成在单元格本身打属性（CSS 负责外观，事件委托负责点击），重写
+  // 内容不会影响这套机制，也就没有空窗。
+  //
+  // 可查询地址放在 data-shadcn-host 上；一台主机有多个地址时，每个地址各占
+  // 一个子容器，点击时按被点到的那一个决定目标。
+  function markCell(cell, host, opts) {
     if (!cell || !host) return;
-    if (cell.querySelector("[data-shadcn-host-entry]")) return;
 
-    const parts = cell.querySelectorAll("div, span");
-    const targets = parts.length ? [...parts] : [cell];
+    const o = opts ?? {};
 
-    for (const node of targets) {
-      if (node.querySelector?.("[data-shadcn-host-entry]")) continue;
-      const text = (node.textContent || "").trim();
-      const addr = firstAddress(text, "v4");
-      if (!addr) continue;
+    cell.classList.add("shadcn-host-cell");
+    cell.dataset.shadcnHost = host;
+    if (o.entries) cell.dataset.shadcnEntries = o.entries;
 
-      const btn = el("button", "shadcn-host-entry", text);
-      btn.type = "button";
-      btn.dataset.shadcnHostEntry = addr;
-      btn.title = "查看 " + addr + " 的实时连接";
-      btn.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        openDrawer(addr);
-      });
+    // 单行省略可能把地址截断，给出完整提示
+    cell.title = "查看 " + host + " 的实时连接";
+  }
 
-      node.textContent = "";
-      node.appendChild(btn);
-    }
+  // 取被点击元素所属的可查询地址：优先最近祖先上的 data-shadcn-addr
+  // （多地址格子给每个子容器单独标注），否则用单元格自己的 data-shadcn-host。
+  function hostFromEvent(ev) {
+    const el0 = ev.target;
+    if (!el0 || !el0.closest) return null;
+
+    const addrNode = el0.closest("[data-shadcn-addr]");
+    if (addrNode) return addrNode.dataset.shadcnAddr;
+
+    const cell = el0.closest("[data-shadcn-host]");
+    return cell ? cell.dataset.shadcnHost : null;
   }
 
   function enrichTable() {
@@ -172,7 +175,6 @@
       const cells = rows[r].querySelectorAll("td");
       if (!cells.length) continue;
 
-      // 主机名格子里的图标要保留，只把文字换成按钮
       const nameCell = iName != null ? cells[iName] : null;
       const v4Cell = iV4 != null ? cells[iV4] : null;
 
@@ -184,37 +186,26 @@
       const host = v4 ?? v6;
       if (!host) continue;
 
-      if (nameCell) {
-        // 保留图标，只把纯文本换成按钮。必须先取文字再清空单元格 ——
-        // 清空后再读 textContent 只会得到空串（图标没有文本）。
-        const icon = nameCell.querySelector("img");
-        const existing = nameCell.querySelector("[data-shadcn-host-entry]");
-        // 已经是本主机对应的按钮就不重建，避免每轮轮询都重排 DOM
-        const already =
-          existing && existing.dataset.shadcnHostEntry === host;
+      // 主机名格：整格一个入口，指向该行主机的首个地址
+      markCell(nameCell, host);
 
-        if (!already) {
-          const labelText = (nameCell.textContent || "").trim();
-          nameCell.textContent = "";
-          if (icon) nameCell.appendChild(icon);
-
-          if (labelText && labelText !== "-") {
-            const label = el("button", "shadcn-host-entry", labelText);
-            label.type = "button";
-            label.dataset.shadcnHostEntry = host;
-            label.title = "查看 " + host + " 的实时连接";
-            label.addEventListener("click", function (ev) {
-              ev.preventDefault();
-              openDrawer(host);
-            });
-            nameCell.appendChild(label);
-          }
-        }
-      }
-
+      // IPv4 格：可能有多条地址，逐个子容器标注，点哪个进哪个
       if (v4Cell) {
-        const existing = v4Cell.querySelector("[data-shadcn-host-entry]");
-        if (!existing && v4) makeEntry(v4Cell, v4);
+        const leaves = [...v4Cell.querySelectorAll("div, span")].filter(
+          (n) => n.children.length === 0,
+        );
+        const targets = leaves.length ? leaves : [v4Cell];
+        const addrs = [];
+
+        for (const node of targets) {
+          const addr = firstAddress((node.textContent || "").trim(), "v4");
+          if (!addr) continue;
+          node.dataset.shadcnAddr = addr;
+          addrs.push(addr);
+        }
+
+        // 单元格本身也标上，作为兜底（点到空白处时用它）
+        if (addrs.length) markCell(v4Cell, addrs[0], { entries: addrs.length });
       }
     }
 
@@ -222,27 +213,37 @@
   }
 
   // 表格是异步填充的，且用户可隐藏/展开该区块，所以持续观察。
+  //
+  // 只打属性、不插元素，所以重写内容不会让“链接”消失，只是标记需要补回。
+  // 这里不用 requestAnimationFrame 合并：LuCI 重绘一次会产生成百上千条
+  // 变更记录，等到下一帧再补会让标记空缺约 450ms。改成同步补 —— 观察器
+  // 回调本身就在微任务里批量执行，逐条重排的代价小于半秒的可视空缺。
   function watchTable() {
     if (enrichObserver) return;
-    let scheduled = false;
 
-    enrichObserver = new MutationObserver(function () {
-      if (scheduled) return;
-      scheduled = true;
-      // 合并同一批 DOM 变更，避免逐节点触发重排
-      window.requestAnimationFrame(function () {
-        scheduled = false;
-        enrichTable();
-      });
+    enrichObserver = new MutationObserver(function (records) {
+      // 只关心表格区域的变化，页面其它地方（抽屉、菜单）不必重扫
+      const table = document.getElementById(LEASES_TABLE_ID);
+      if (!table) return;
+
+      for (const rec of records) {
+        const t = rec.target;
+        const node = t.nodeType === 1 ? t : t.parentElement;
+        if (node && (node === table || table.contains(node))) {
+          enrichTable();
+          return;
+        }
+      }
     });
 
     enrichObserver.observe(document.body, {
       childList: true,
+      characterData: true,
       subtree: true,
     });
 
     // 兜底：初次挂载时表格可能还没渲染出来
-    enrichTimer = window.setInterval(enrichTable, 2000);
+    enrichTimer = window.setInterval(enrichTable, 500);
     enrichTable();
   }
 
@@ -518,14 +519,29 @@
     if (ev.key === "Escape") closeDrawer();
   }
 
+  // 点击委托：表格内容由 LuCI 反复重写，逐个绑监听会失效，统一在 document
+  // 上派发一次。只认带 data-shadcn-host / data-shadcn-addr 的元素。
+  function onClick(ev) {
+    // 抽屉自身的点击不处理
+    if (ev.target.closest && ev.target.closest(".shadcn-drawer-root")) return;
+
+    const host = hostFromEvent(ev);
+    if (!host) return;
+
+    ev.preventDefault();
+    openDrawer(host);
+  }
+
   // ── lifecycle ────────────────────────────────────────────────────────
 
   function mount() {
     watchTable();
     document.addEventListener("keydown", onKey);
+    document.addEventListener("click", onClick);
   }
 
   function unmount() {
+    document.removeEventListener("click", onClick);
     if (enrichObserver) {
       enrichObserver.disconnect();
       enrichObserver = null;
