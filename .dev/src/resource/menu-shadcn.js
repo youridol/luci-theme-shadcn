@@ -39,6 +39,12 @@ const RECENTS_KEY = "shadcn.palette.recents";
 
 return baseclass.extend({
   __init__() {
+    /* 暴露实例：sidebar-shadcn 的点击处理需要调用 openSubDrawer，而它是本模块
+       的方法（抽屉的 DOM 与数据都在这边）。两边各自持有 document 上的委托
+       监听，靠这个全局引用打通。
+       只挂一个只读引用，不额外持有状态 —— 实例本身就是这个对象。 */
+    window.ShadcnMenu = this;
+
     ui.menu.load().then((tree) => {
       this.renderSidebarChrome();
       this.render(tree);
@@ -312,18 +318,11 @@ return baseclass.extend({
     const dp = L.env.dispatchpath || [];
 
     // If header.ut replayed the cached sidebar, this rebuild is a silent
-    // refresh — keep the user's accordion/scroll state instead of resetting
-    // to the default (active section open, scrolled to top).
+    // refresh — keep the user's scroll position instead of jumping to the top.
     const restored =
       document
         .getElementById("sidebar")
         ?.getAttribute("data-shadcn-restored") === "1";
-    const openSections = restored
-      ? Array.from(
-          nav.querySelectorAll('.sidebar-accordion-item[data-open="true"]'),
-          (el) => el.getAttribute("data-section"),
-        )
-      : null;
     const savedScrollTop = restored ? nav.scrollTop : 0;
 
     nav.innerHTML = "";
@@ -402,7 +401,10 @@ return baseclass.extend({
         "div",
         {
           class: "sidebar-accordion-item" + (isActive ? " active" : ""),
-          "data-open": isActive ? "true" : "false",
+          /* 恒为 false：子项不再就地展开，改由点击弹出全高抽屉。
+             原来活动分区会带 data-open="true" 直接展开一段缩进列表 —— 那正是
+             这次要去掉的行为。保留属性本身是因为 CSS 与恢复逻辑仍读它。 */
+          "data-open": "false",
           "data-section": section.name,
         },
         [
@@ -411,8 +413,10 @@ return baseclass.extend({
               iconEl,
             ]),
             E("span", { class: "sidebar-label" }, [_(section.title)]),
+            /* 箭头朝右而不是朝下：朝下意味着「点开后在下面展开」，而现在的
+               行为是「向右弹出一层面板」。语义与视觉要一致。 */
             E("span", { class: "sidebar-chevron", "aria-hidden": "true" }, [
-              this._iconFile("chevron-down", 18),
+              this._iconFile("chevron-right", 18),
             ]),
           ]),
           E("div", { class: "sidebar-accordion-sub" }, [
@@ -455,13 +459,14 @@ return baseclass.extend({
     });
 
     if (restored) {
+      /* 只恢复滚动位置，不恢复「哪个分区是展开的」—— 子项已经不再就地
+         展开（改由点击弹出右侧抽屉），恢复 data-open="true" 会让缓存回来的
+         一段缩进列表闪一下再消失。
+
+         顺带清掉缓存 HTML 里带过来的旧状态：header.ut 回放的是上一次渲染的
+         标记，可能还留着 data-open="true"。 */
       nav.querySelectorAll(".sidebar-accordion-item").forEach((item) => {
-        item.setAttribute(
-          "data-open",
-          openSections.includes(item.getAttribute("data-section"))
-            ? "true"
-            : "false",
-        );
+        item.setAttribute("data-open", "false");
       });
       nav.scrollTop = savedScrollTop;
     }
@@ -566,11 +571,19 @@ return baseclass.extend({
       requestAnimationFrame(() => panel.classList.add("is-open"));
     }
 
+    /* 全高显示：抽屉从视口顶一直到视口底，不再被侧边栏的高度或顶部的 56px
+       偏移裁短。
+
+       原来是把 top 定在侧边栏顶部往下 56px、maxHeight 取「侧边栏高度」——
+       一屏二十几个子项（系统分区 11 个、状态 7 个）会挤成一个小框还要内部滚动，
+       反而比手风琴更难扫。全高之后子项一次看全，滚动交给整列。
+
+       left 仍贴侧边栏右缘：折叠成图标轨时宽度变窄，抽屉跟着左移。 */
     const r = document.getElementById("sidebar").getBoundingClientRect();
     panel.style.left = Math.max(0, Math.round(r.right)) + "px";
-    panel.style.top = Math.round(r.top) + 56 + "px";
-    panel.style.maxHeight =
-      Math.min(window.innerHeight - r.top - 68, r.height) + "px";
+    panel.style.top = "0px";
+    panel.style.height = "100vh";
+    panel.style.maxHeight = "100vh";
   },
 
   closeSubDrawer() {

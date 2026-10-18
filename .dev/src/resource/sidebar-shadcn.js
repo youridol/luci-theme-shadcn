@@ -206,6 +206,15 @@ return baseclass.extend({
 
   /* ── Accordion ── */
 
+  /* 一级项点击 → 打开全高抽屉，不再就地展开。
+
+     原来点一级项会把子列表在手风琴里展开（grid 0fr↔1fr）。改成抽屉之后，
+     手风琴的展开动画只是「点开又收起」的中间态，反而让侧边栏跳一下；而且
+     同一份子项在两处同时出现也没有意义。所以这里只负责把点击转成抽屉，
+     侧边栏本身保持收起 —— 一级菜单始终是一列固定高度的行。
+
+     侧边栏折叠成图标轨（data-collapsed）时行为不变：那时本来就靠悬浮面板
+     （sidebar-shadcn 的 collapsed popover）显示子项，不该再开第二个浮层。 */
   _initAccordion() {
     document.addEventListener("click", (e) => {
       const trigger = e.target.closest(".sidebar-nav-parent");
@@ -217,6 +226,14 @@ return baseclass.extend({
       const item = trigger.closest(".sidebar-accordion-item");
       if (!item) return;
 
+      // 抽屉由 menu-shadcn 负责渲染（它握有 ui.menu 的数据）。
+      if (window.ShadcnMenu?.openSubDrawer) {
+        window.ShadcnMenu.openSubDrawer(item);
+        return;
+      }
+
+      /* 兜底：menu-shadcn 还没加载完时退回手风琴，不让点击变成没反应。
+         正常情况下走不到这里 —— 菜单是先渲染出来才可能被点的。 */
       const isOpen = item.getAttribute("data-open") === "true";
 
       document

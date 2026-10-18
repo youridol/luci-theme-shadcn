@@ -138,13 +138,11 @@
 						if (sub) {
 							sub.classList.add('active');
 							var acc = best.closest('.sidebar-accordion-item');
-							if (acc) {
-								acc.classList.add('active');
-								acc.setAttribute('data-open', 'true');
-								var open = sb.querySelectorAll('.sidebar-accordion-item[data-open="true"]');
-								for (var k = 0; k < open.length; k++)
-									if (open[k] !== acc) open[k].setAttribute('data-open', 'false');
-							}
+							/* 只标活动分区，不设 data-open。
+							   子项不再就地展开（改由点击弹出右侧全高抽屉），
+							   这里若还展开活动分区，首帧会闪出一段缩进列表，
+							   随后被 menu-shadcn 的重渲染收掉。 */
+							if (acc) acc.classList.add('active');
 						} else if (best.classList.contains('sidebar-logout')) {
 							best.classList.add('active');
 						} else {

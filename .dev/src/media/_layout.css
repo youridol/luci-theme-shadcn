@@ -151,13 +151,10 @@ html[data-sidebar-collapsed="true"] #sidebar {
   }
 }
 
-.sidebar-accordion-item {
-  &[data-open="true"] {
-    .sidebar-chevron {
-      @apply rotate-180;
-    }
-  }
-}
+/* 箭头不再随展开旋转。
+   原来点开一级项箭头转 180°（朝下 → 朝上），表示「已在下面展开」。现在子项
+   改由点击弹出右侧抽屉，箭头始终朝右，「往右弹」这个方向感不会变 —— 保留
+   旋转会让它转成朝左，反而指错方向。 */
 
 /* Grid 0fr↔1fr accordion with an opacity fade: animates to the content's
    real height with no JS measurement, and the active section renders open
