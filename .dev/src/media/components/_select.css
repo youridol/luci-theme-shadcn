@@ -6,12 +6,14 @@ select {
 
   /* Two layers, not a flat bg-input-a30. The UA paints a native <select>'s
      option list from this element's own background-color, and a translucent
-     one composites over white: the dark-mode popup came out white while its
-     rows inherited --foreground, so every choice but the OS-highlighted one
-     was invisible. --popover is the opaque base (what the popup inherits) and
-     the input tint rides on top as a gradient, leaving the trigger's look
-     unchanged. */
-  background-image: linear-gradient(var(--input-a30), var(--input-a30));
+     one composites over whatever bed: the popup came out a different tone from
+     its rows, so every choice but the OS-highlighted one was hard to read.
+     --popover is the opaque base (what the popup inherits) and the input tint
+     rides on top as a solid pseudo-element, leaving the trigger's look
+     unchanged without a gradient (.dev/docs/adr/0003-no-gradients.md). */
+  &::before {
+    @apply bg-input-a30 pointer-events-none absolute inset-0 rounded-md content-[''];
+  }
 
   /* Chevron drawn as a mask so it inherits currentColor (no hard-coded hex).
      The official trigger keeps its chevron at opacity-50 of the text colour,

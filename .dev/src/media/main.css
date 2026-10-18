@@ -32,7 +32,9 @@
 @source not "../media/patches/**/*.css";
 @source not "../resource/patches/**/*.js";
 
-@custom-variant dark (&:where([data-darkmode=true], [data-darkmode=true] *));
+/* This theme ships a single colour scheme (.dev/docs/adr/0002-dark-only.md):
+   every component reads the `:root` token set, so there is no `dark:` variant
+   to define. */
 
 @import "./_base.css";
 @import "./_layout.css";

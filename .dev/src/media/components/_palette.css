@@ -128,8 +128,10 @@ button.cmdk-cancel {
     @apply no-underline;
   }
 
-  img.shadcn-icon {
-    @apply size-3.75 shrink-0;
+  /* Icon boxes are 15px in the palette rows (menu-shadcn.js sets the size
+     inline), so only the flex behaviour needs pinning here. */
+  .shadcn-icon {
+    @apply shrink-0;
   }
 
   mark {
@@ -144,12 +146,6 @@ button.cmdk-cancel {
      and the section label stays available without a per-row breadcrumb. */
   .cmdk-group-name {
     @apply text-muted-foreground ml-auto shrink-0 text-xs;
-  }
-
-  /* The tick marks which theme mode is in effect, so it has to stay
-     legible on every row, focused or not. */
-  .cmdk-check {
-    @apply text-foreground ml-auto block size-3.5 shrink-0 bg-current [mask:url('@assets/icons/check.svg')_center/contain_no-repeat];
   }
 
   &.is-selected {

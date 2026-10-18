@@ -34,7 +34,7 @@
 					<label class="login-label" for="luci_username">{{ _('Username') }}</label>
 					<div class="login-input-glass">
 						<span class="login-input-icon">
-							<img src="{{ media }}/icons/user.svg" width="16" height="16" alt="">
+							<span class="shadcn-icon" style="--shadcn-icon:url('{{ media }}/icons/user.svg')" aria-hidden="true"></span>
 						</span>
 						<input
 							type="text"
@@ -51,7 +51,7 @@
 					<label class="login-label" for="luci_password">{{ _('Password') }}</label>
 					<div class="login-input-glass">
 						<span class="login-input-icon">
-							<img src="{{ media }}/icons/lock.svg" width="16" height="16" alt="">
+							<span class="shadcn-icon" style="--shadcn-icon:url('{{ media }}/icons/lock.svg')" aria-hidden="true"></span>
 						</span>
 						<input
 							type="password"
@@ -62,7 +62,7 @@
 							autofocus
 						>
 						<button type="button" class="login-pw-toggle" id="pw-toggle" aria-label="{{ _('Reveal/hide password') }}">
-							<img src="{{ media }}/icons/eye.svg" id="pw-toggle-icon" width="16" height="16" alt="">
+							<span class="shadcn-icon" id="pw-toggle-icon" style="--shadcn-icon:url('{{ media }}/icons/eye.svg')" aria-hidden="true"></span>
 						</button>
 					</div>
 				</div>
@@ -94,11 +94,13 @@
 	var inp = document.getElementById('luci_password');
 	var ico = document.getElementById('pw-toggle-icon');
 	if (!btn || !inp || !ico) return;
+	/* The icon is a mask box, so switching it means rewriting the mask image —
+	   the same two files the old <img src> used to point at. */
 	var base = (document.documentElement.getAttribute('data-shadcn-media') || '/luci-static/shadcn').replace(/\/$/, '');
 	btn.addEventListener('click', function () {
 		var show = inp.type === 'password';
 		inp.type = show ? 'text' : 'password';
-		ico.src = base + (show ? '/icons/eye-off.svg' : '/icons/eye.svg');
+		ico.style.setProperty('--shadcn-icon', "url('" + base + (show ? '/icons/eye-off.svg' : '/icons/eye.svg') + "')");
 	});
 })();
 </script>

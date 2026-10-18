@@ -21,9 +21,9 @@ const common = {
   card: ["const", "var:surface"],
   popover: ["const", "var:surface"],
   destructive: ["const", "var:danger"],
-  // Official border/input carry their own alpha in the literal: dark
-  // oklch(1 0 0 / 10%) and oklch(1 0 0 / 15%), light oklch(0.922 0 0) solid.
-  // They are NOT solid colors re-based through the alpha ladder.
+  // Official border/input carry their own alpha in the literal:
+  // oklch(1 0 0 / 10%) and oklch(1 0 0 / 15%). They are NOT solid colors
+  // re-based through the alpha ladder.
   ring: ["const", "oklch(0.556 0 0)"],
   input: ["const", "oklch(0.922 0 0)"],
   sidebar: ["const", "var:surface"],
@@ -54,36 +54,15 @@ const common = {
   accent_foreground: ["const", "var:text"],
 };
 
-// muted_foreground / sidebar_muted differ per mode: the official light value
-// (0.556) is AA on white, while the official dark value (0.708) is AA on the
-// 0.145 canvas. Using one value for both fails contrast in light mode.
-const MUTED_FG_LIGHT = ["const", "oklch(0.556 0 0)"];
-const MUTED_FG_DARK = ["const", "oklch(0.708 0 0)"];
+// muted_foreground / sidebar_muted: the value is 0.708, which is AA on the
+// 0.145 canvas this theme ships (.dev/docs/adr/0002-dark-only.md).
+const MUTED_FG = ["const", "oklch(0.708 0 0)"];
 
 export const DERIVATIONS = {
-  light: {
-    ...common,
-    muted_foreground: MUTED_FG_LIGHT,
-    sidebar_muted: MUTED_FG_LIGHT,
-    muted: ["const", "oklch(0.97 0 0)"],
-    secondary: ["const", "oklch(0.97 0 0)"],
-    accent: ["const", "oklch(0.97 0 0)"],
-    border: ["const", "oklch(0.922 0 0)"],
-    panel_border: ["const", "oklch(0.922 0 0)"],
-    primary_hover: ["shade", "brand", -0.06],
-    sidebar_accent: ["const", "oklch(0.97 0 0)"],
-    sidebar_active_bg: ["const", "oklch(0.97 0 0)"],
-    sidebar_active_fg: ["const", "var:text"],
-    sidebar_border: ["const", "oklch(0.922 0 0)"],
-    terminal_bg: ["const", "oklch(0.14 0.02 264)"],
-    warning_soft_fg: ["const", "oklch(0.42 0.12 75)"],
-    progress_bar_start: ["const", "var:brand"],
-    login_left_bg: ["const", "oklch(0.97 0 0)"],
-  },
   dark: {
     ...common,
-    muted_foreground: MUTED_FG_DARK,
-    sidebar_muted: MUTED_FG_DARK,
+    muted_foreground: MUTED_FG,
+    sidebar_muted: MUTED_FG,
     muted: ["const", "oklch(0.269 0 0)"],
     secondary: ["const", "oklch(0.269 0 0)"],
     accent: ["const", "oklch(0.269 0 0)"],
@@ -102,10 +81,11 @@ export const DERIVATIONS = {
   },
 };
 
-// Baked-alpha variants. Each base (resolved per mode) is emitted at each alpha
-// as a flat oklch(L C H / a) literal -> replaces Tailwind /NN opacity modifiers.
-// Official values carry their own alpha in the literal (border oklch(1 0 0 / 10%)),
-// so the alpha ladder below re-bases them per mode.
+// Baked-alpha variants. Each base (resolved once, since this theme ships a
+// single colour scheme) is emitted at each alpha as a flat oklch(L C H / a)
+// literal -> replaces Tailwind /NN opacity modifiers. Official values carry
+// their own alpha in the literal (border oklch(1 0 0 / 10%)), so the alpha
+// ladder below re-bases them.
 export const ALPHAS = {
   primary: [5, 10, 15, 20, 25, 60, 70, 90],
   destructive: [8, 10, 20, 30, 40, 50, 60, 70, 80, 90],

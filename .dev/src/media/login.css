@@ -14,7 +14,8 @@
 @import "./_tokens.css";
 @import "./_shared.css";
 
-@custom-variant dark (&:where([data-darkmode=true], [data-darkmode=true] *));
+/* Single colour scheme, so no `dark:` variant is defined here either. See
+   .dev/docs/adr/0002-dark-only.md. */
 
 @layer base {
   *,
@@ -171,19 +172,22 @@ html {
 .login-input-icon {
   @apply pointer-events-none absolute inset-y-0 left-3 flex items-center;
 
-  img {
-    @apply size-4 opacity-40;
+  /* The icon is an empty mask box (.shadcn-icon in _shared.css), so its tone
+     comes from the field's own text colour rather than an <img> filter. The
+     box size is set once there. */
+  .shadcn-icon {
+    @apply opacity-40;
   }
 }
 
 .login-pw-toggle {
   @apply absolute inset-y-0 right-0 flex cursor-pointer items-center border-0 bg-transparent px-3;
 
-  img {
-    @apply size-4 opacity-40 [transition:opacity_.15s];
+  .shadcn-icon {
+    @apply opacity-40 [transition:opacity_.15s];
   }
 
-  &:hover img {
+  &:hover .shadcn-icon {
     @apply opacity-70;
   }
 }
@@ -213,8 +217,7 @@ html {
 /* Inner rounded image — matches sign-in.tsx absolute inset-4 rounded-3xl */
 .login-image-inner {
   @apply absolute inset-4 rounded-3xl bg-cover bg-center;
-  /* The fallback used to be two hard-coded oklch literals; it now resolves
-     through the login-left-bg token so it follows the mode like the rest of
-     the page. */
+  /* The fallback resolves through the login-left-bg token, which in a
+     single-scheme theme is the dark value. */
   background-image: var(--login-bg-image, var(--login-left-bg));
 }

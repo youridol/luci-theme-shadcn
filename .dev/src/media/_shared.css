@@ -7,50 +7,77 @@
  * lives here so it is written once and imported by each.
  */
 
+/* This theme ships a single scheme (.dev/docs/adr/0002-dark-only.md): every
+   surface comes from the `:root` token set, so there is no mode to switch. */
 html {
-  @apply scheme-light;
-}
-
-html[data-darkmode="true"] {
   @apply scheme-dark;
 }
 
-/* Lucide icons loaded via <img>: <img>-embedded SVGs render with black strokes
-   and ignore the parent's `color`, so flatten them to a single tone and invert
-   for dark mode (per-context opacity stays in each stylesheet). */
-.card-header img,
-.login-input-icon img,
-.login-pw-toggle img,
-img.shadcn-icon {
-  filter: brightness(0) saturate(100%);
+/* ── Icons ───────────────────────────────────────────────────────────────
+   One mechanism for the whole theme (.dev/docs/adr/0006-inline-svg-icons.md).
+   An icon is an empty box painted with `mask` + `bg-current`, so its colour
+   comes from the surrounding `color`, i.e. from the token that colour resolved
+   to. Nothing uses `filter`, which is what makes hover, `prefers-contrast` and
+   forced-colours behave.
+
+   A single rule below consumes two custom properties; every icon sets only
+   those two:
+
+     --shadcn-icon       the mask image (required)
+     --shadcn-icon-size  the box (default 1rem)
+
+   Where the URL comes from depends on who owns the markup:
+   - markup the theme ships itself (the login fields) names its icon through
+     `@assets/…`, which Vite inlines as a data URI — no request at all;
+   - icons the themed JS builds at runtime (sidebar sections, chrome chevrons)
+     point `--shadcn-icon` at /icons/<name>.svg, because a bundled data URI is
+     not addressable from JS.
+
+   The brand logo is deliberately not part of this: it is a two-tone mark
+   (black tile + white strokes), so it stays an <img>. */
+
+.shadcn-icon {
+  @apply inline-block shrink-0 bg-current opacity-65;
+
+  -webkit-mask: var(--shadcn-icon) center / contain no-repeat;
+  mask: var(--shadcn-icon) center / contain no-repeat;
+  /* px, not rem: this theme's root font-size is 14px, so `1rem` would render a
+     16px icon at 14px. */
+  width: var(--shadcn-icon-size, 16px);
+  height: var(--shadcn-icon-size, 16px);
 }
 
-html[data-darkmode="true"] .card-header img,
-html[data-darkmode="true"] .login-input-icon img,
-html[data-darkmode="true"] .login-pw-toggle img,
-html[data-darkmode="true"] img.shadcn-icon {
-  filter: brightness(0) saturate(100%) invert(1);
+/* Static template chrome: the mobile hamburger (header.ut). */
+.topbar-hamburger .shadcn-icon {
+  @apply [--shadcn-icon:url('@assets/icons/menu.svg')] [--shadcn-icon-size:20px];
 }
 
-/* Per-context opacity tuning for the flattened <img> icons above. These are
-   theme chrome (sidebar + card header), present on every admin page, so they
-   stay globally loaded here rather than in an on-demand per-page patch. */
-.card-header img,
-img.shadcn-icon {
-  opacity: 0.65;
+/* Login page fields (sysauth.ut). `--shadcn-icon` is set inline by the
+   template, because these four names (`user`, `lock`, `eye`, `eye-off`) are
+   served from /icons/ rather than bundled: `eye` / `eye-off` exist only under
+   public/, and duplicating them into src/assets to reach a data URI would buy
+   one request at the cost of a second copy of the asset.
+
+   Sizes are px, not rem: this theme's root font-size is 14px, so `1rem` would
+   render a 16px icon at 14px.
+
+   The password toggle swaps icons by rewriting its `--shadcn-icon`, since a
+   mask image cannot be changed through `src` the way an <img> could. */
+.login-input-icon .shadcn-icon,
+.login-pw-toggle .shadcn-icon {
+  @apply [--shadcn-icon-size:16px];
 }
 
-#sidebar img.shadcn-icon {
-  opacity: 0.65;
+/* Per-context tone. These are theme chrome (sidebar + card header), present on
+   every admin page, so they stay globally loaded here rather than in an
+   on-demand per-page patch. */
+#sidebar .shadcn-icon {
+  @apply opacity-70;
 }
 
-html[data-darkmode="true"] #sidebar img.shadcn-icon {
-  opacity: 0.7;
-}
-
-.card-header button:hover img,
-#sidebar .sidebar-nav-item.active img,
-#sidebar .sidebar-accordion-item.active img,
-#sidebar .sidebar-nav-parent:hover img {
-  opacity: 1;
+.card-header button:hover .shadcn-icon,
+#sidebar .sidebar-nav-item.active .shadcn-icon,
+#sidebar .sidebar-accordion-item.active .shadcn-icon,
+#sidebar .sidebar-nav-parent:hover .shadcn-icon {
+  @apply opacity-100;
 }

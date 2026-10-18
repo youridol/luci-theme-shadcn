@@ -1,6 +1,9 @@
 "use strict";
 "require baseclass";
 
+// Legacy key. The theme shipped a light/dark/device switch until
+// .dev/docs/adr/0002-dark-only.md; a stored value is deleted on start so a
+// stale preference cannot outlive the switch it belonged to.
 const THEME_KEY = "shadcn.theme";
 const SIDEBAR_KEY = "shadcn.sidebar";
 
@@ -26,53 +29,17 @@ return baseclass.extend({
     this.initTheme();
     this.initSidebar();
     this.initMobileDrawer();
-    this.initThemeToggle();
   },
 
   /* ── Theme ── */
 
+  // One scheme only. header.ut sets data-darkmode before paint; this drops the
+  // key the removed three-way switch used to write.
   initTheme() {
-    const saved = localStorage.getItem(THEME_KEY) || "device";
-    this.applyTheme(saved);
-  },
-
-  applyTheme(theme) {
-    const isDark =
-      theme === "dark" ||
-      (theme === "device" &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches);
-    document.documentElement.setAttribute("data-darkmode", isDark);
-    localStorage.setItem(THEME_KEY, theme);
-    this._updateThemeIcon(isDark);
-  },
-
-  _updateThemeIcon(isDark) {
-    const btn = document.getElementById("theme-toggle-btn");
-    if (!btn) return;
-    const img = btn.querySelector("img");
-    if (!img) return;
-    const media =
-      document.documentElement.getAttribute("data-shadcn-media") ||
-      "/luci-static/shadcn";
-    const base = String(media).replace(/\/$/, "");
-    img.src = base + (isDark ? "/icons/moon.svg" : "/icons/sun.svg");
-  },
-
-  initThemeToggle() {
-    const btn = document.getElementById("theme-toggle-btn");
-    if (!btn) return;
-    btn.addEventListener("click", () => {
-      const isDark =
-        document.documentElement.getAttribute("data-darkmode") === "true";
-      this.applyTheme(isDark ? "light" : "dark");
-    });
-    window
-      .matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener("change", () => {
-        if ((localStorage.getItem(THEME_KEY) || "device") === "device") {
-          this.applyTheme("device");
-        }
-      });
+    try {
+      localStorage.removeItem(THEME_KEY);
+    } catch (e) {}
+    document.documentElement.setAttribute("data-darkmode", "true");
   },
 
   /* ── Sidebar collapse (desktop icon rail) ── */

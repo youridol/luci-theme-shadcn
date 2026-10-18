@@ -20,6 +20,13 @@ const forbidden = [
     label: "relative oklch()",
     pattern: /oklch\(from/g,
   },
+  {
+    // .dev/docs/adr/0003-no-gradients.md: depth comes from token lightness
+    // steps, borders and shadows, never from a gradient. This covers the
+    // vendor-prefixed forms too.
+    label: "gradient",
+    pattern: /(?:^|[^\w-])(?:repeating-)?(?:linear|radial|conic)-gradient\(/g,
+  },
 ];
 const failures = [];
 
@@ -33,8 +40,8 @@ for (const file of files) {
 }
 
 if (failures.length > 0) {
-  console.error(`Runtime token color functions found:\n${failures.join("\n")}`);
+  console.error(`Forbidden CSS constructs found:\n${failures.join("\n")}`);
   process.exitCode = 1;
 } else {
-  console.log("Built CSS contains no runtime token color functions.");
+  console.log("Built CSS contains no runtime colour functions or gradients.");
 }

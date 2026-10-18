@@ -1,7 +1,9 @@
 /* shadcn Tabs (default variant) — LuCI tab sections.
    Official List: bg-muted, rounded-lg, p-[3px], h-9, text-muted-foreground.
    Official Trigger active: bg-background + text-foreground + shadow-sm, with
-   dark:border-input dark:bg-input/30; inactive sits at text-foreground/60. */
+   border-input bg-input-a30 and a border (the official theme pairs those with
+   `dark:`, which this single-scheme theme applies unconditionally); inactive
+   sits at text-foreground/60. */
 .cbi-tabmenu {
   @apply bg-muted text-muted-foreground mb-2 inline-flex h-9 w-fit max-w-full items-center gap-0 overflow-x-auto rounded-lg p-[3px];
 
@@ -21,7 +23,7 @@
     }
 
     &.cbi-tab > a {
-      @apply bg-background text-foreground dark:border-input dark:bg-input-a30 shadow-sm dark:border;
+      @apply bg-background text-foreground border-input bg-input-a30 shadow-sm border;
     }
   }
 }

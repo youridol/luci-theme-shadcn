@@ -16,10 +16,10 @@
   box-shadow: var(--shadow-sm);
 }
 
-.Dashboard
-  > .section-content
-  .title
-  img[src*=".svg"]:where([data-darkmode="true"], [data-darkmode="true"] *) {
+/* The dashboard's own title icons are black-on-transparent; this theme has one
+   colour scheme (.dev/docs/adr/0002-dark-only.md), so invert unconditionally
+   rather than gating on data-darkmode. */
+.Dashboard > .section-content .title img[src*=".svg"] {
   filter: invert(1);
 }
 

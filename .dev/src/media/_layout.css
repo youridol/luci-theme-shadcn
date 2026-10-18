@@ -129,6 +129,8 @@ html[data-sidebar-collapsed="true"] #sidebar {
 
   .sidebar-icon {
     @apply flex shrink-0 items-center justify-center;
+    /* Sizes come from the icon's own --shadcn-icon-size; only the pre-mask
+       svg/img paths need a box here. */
     svg,
     img {
       @apply size-4;
@@ -260,7 +262,6 @@ html[data-sidebar-collapsed="true"] #sidebar {
     @apply flex-1 truncate;
   }
 }
-
 /* ── Main wrapper ─────────────────────────────────────────────────── */
 
 #main-wrapper {
@@ -325,14 +326,6 @@ html[data-sidebar-anim] #sidebar {
     img {
       @apply h-3.5 w-3.5;
     }
-  }
-}
-
-button.topbar-icon-btn {
-  @apply text-muted-foreground hover:bg-accent hover:text-accent-foreground inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 [transition:color_.15s,background-color_.15s,border-color_.15s];
-
-  img {
-    @apply size-4 shrink-0;
   }
 }
 
@@ -403,13 +396,13 @@ button.topbar-icon-btn {
   }
 
   /* Channel-analysis chart (#channel_graph) hardcodes a white bg + black grid
-     lines inline; recolor for dark mode. */
+     lines inline. This theme has one scheme, so recolor unconditionally. */
   & div[style] {
     > svg {
-      @apply dark:!bg-card;
+      @apply !bg-card;
 
       & line[style] {
-        @apply dark:!stroke-foreground;
+        @apply !stroke-foreground;
       }
     }
   }

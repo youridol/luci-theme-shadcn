@@ -23,9 +23,7 @@ function alphaTokens(resolved) {
   return out;
 }
 
-const light = resolveMode("light");
 const dark = resolveMode("dark");
-const lightA = alphaTokens(light);
 const darkA = alphaTokens(dark);
 
 const STRUCTURE = `
@@ -40,8 +38,8 @@ const STRUCTURE = `
 `;
 
 const themeColorsCss = themeColors([
-  ...Object.keys(light),
-  ...Object.keys(lightA),
+  ...Object.keys(dark),
+  ...Object.keys(darkA),
 ]);
 
 // Add aliases for backward compatibility
@@ -79,19 +77,13 @@ const HEADER = `/**
  * luci-theme-shadcn: design tokens -- GENERATED, DO NOT EDIT.
  * Run \`pnpm gen:tokens\`. Source: tokens/defaults.js + tokens/spec.js
  * All color values are flat oklch() literals; no dynamic color functions.
- * Dark mode overrides must stay after light mode block.
+ * This theme ships dark only (.dev/docs/adr/0002-dark-only.md): the values
+ * live on :root and there is no mode-override block.
  */
 `;
 
 const css =
-  HEADER +
-  "\n" +
-  block(":root", light, lightA) +
-  STRUCTURE +
-  "}\n\n" +
-  block('[data-darkmode="true"]', dark, darkA) +
-  "}\n\n" +
-  THEME;
+  HEADER + "\n" + block(":root", dark, darkA) + STRUCTURE + "}\n\n" + THEME;
 
 await writeFile(
   resolve(import.meta.dirname, "../src/media/_tokens.css"),
