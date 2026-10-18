@@ -285,3 +285,315 @@ html.shadcn-drawer-lock body {
     padding: 6px 8px;
   }
 }
+
+/* ══ 概览仪表盘 ════════════════════════════════════════════════════════
+
+   原生的概览页是一列 cbi-section，每个都是「标签 / 值」两列表格，整页读起
+   来像一份文档而不是一块仪表盘。这里做两件事：
+
+   1. admin-status-overview.js 在原生区块前插入一条指标带，把运维最先看的
+      四个数（运行时间、负载、内存、WAN 流量）做成带折线图的磁贴；
+   2. 其余区块重排成响应式网格 —— 宽屏下「系统」与「网络」并排，块内的表格
+      收成紧凑的键值行，「在线主机」占满整行。
+
+   全部颜色取自 token，明暗两套主题自动跟随。 */
+
+/* ── 指标带 ─────────────────────────────────────────────────────────── */
+
+/* 指标带本身是 `#view` 网格的一个直接子项：占满整行，内部再分列。少了这
+   条它会被当成一格塞进两列网格里，四个磁贴挤成 2×2，后面的区块也跟着错
+   位。 */
+#view > .shadcn-metrics,
+.shadcn-metrics {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+.shadcn-metric {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.shadcn-metric:hover {
+  border-color: var(--ring-a50);
+}
+
+.shadcn-metric-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.shadcn-metric-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.shadcn-metric-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.shadcn-metric-value {
+  overflow: hidden;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadcn-metric-unit {
+  margin-left: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.shadcn-metric-foot {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 折线图：拉伸的 inline SVG。preserveAspectRatio=none 让路径填满盒子（样本
+   数变化时不用重新算坐标），vector-effect 让描边恒为 1px，不随盒子缩放。 */
+.shadcn-spark {
+  display: block;
+  width: 100%;
+  height: 34px;
+  margin-top: 2px;
+  overflow: visible;
+}
+
+.shadcn-spark path.shadcn-spark-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.shadcn-spark path.shadcn-spark-area {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.12;
+}
+
+/* 取值本身就是「占总量的比例」（内存）时用进度条，而不是随时间变化的折线。 */
+.shadcn-meter {
+  overflow: hidden;
+  height: 6px;
+  margin-top: 8px;
+  background: var(--primary-a20);
+  border-radius: 999px;
+}
+
+.shadcn-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  border-radius: inherit;
+  transition: width 0.4s var(--ease-out);
+}
+
+/* ── 区块网格 ───────────────────────────────────────────────────────── */
+
+/* `#view` 是 LuCI 渲染所有区块的容器。网格只作用在它上面，其它页面不受
+   影响 —— 这份样式表本来也只在概览页加载。 */
+#view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  #view {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  }
+
+  /* 在线主机是真正的数据表：十二列挤在半宽卡片里没法读，占满整行。 */
+  #view > .cbi-section:has(#status_leases) {
+    grid-column: 1 / -1;
+  }
+
+  /* 网络块里两张网口卡、系统块里三行短键值，并排比各自独占一整行紧凑；
+     「系统」占不到的那一格留给「内存」「存储」这类小卡片自然补齐。 */
+  #view > .cbi-section:has(.network-status-table) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 原生区块自带卡片外观，区块之间的垂直节奏现在由网格负责。 */
+#view > .cbi-section {
+  margin-bottom: 0;
+}
+
+/* 网络块的两张上游卡是 .network-status-table 的直接子项，铺满卡片后紧贴
+   卡片内边距，看起来像被裁掉一角。给它留出与块内表格一致的边距。 */
+#view .network-status-table {
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* ── 卡片内的键值表 ─────────────────────────────────────────────────── */
+
+/* 原生表格是成对的 `<td class="td left">`。让标签列不换行、值列承担换行，
+   是这类表格变好读的关键。 */
+#view .cbi-section > div > table.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+#view .cbi-section > div > table.table > tbody > tr,
+#view .cbi-section > div > table.table > tr {
+  border-bottom: 1px solid var(--border);
+}
+
+#view .cbi-section > div > table.table > tbody > tr:last-child,
+#view .cbi-section > div > table.table > tr:last-child {
+  border-bottom: 0;
+}
+
+#view .cbi-section > div > table.table td.td {
+  padding: 7px 4px;
+  vertical-align: top;
+  color: var(--foreground);
+  border: 0;
+}
+
+/* 键值表里第一格是标签。LuCI 原本给了 width=33%，那是旧布局的依赖，这里让
+   标签不换行、值列承担换行。 */
+#view .cbi-section > div > table.table td.td:first-child {
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  font-variant-numeric: normal;
+}
+
+#view .cbi-section > div > table.table td.td:last-child {
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+/* 这类表格里的进度条沿用核心样式（components/_progress.css）；这里只把
+   上下留白收紧，让它在键值行里不额外撑高。 */
+#view .cbi-section > div > table.table .cbi-progressbar {
+  margin: 1px 0;
+}
+
+/* ── 网口卡片 ───────────────────────────────────────────────────────── */
+
+/* 网口卡由 LuCI 内联 `width:100px` 定尺寸。改成铺满网格单元，两张卡才是
+   一对磁贴，而不是浮在宽卡片里的两枚邮票。 */
+#view .cbi-section > div > div[style*="display:grid"] {
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+#view .cbi-section .ifacebox {
+  width: 100% !important;
+  min-width: 0;
+  margin: 0 !important;
+}
+
+/* 网络块的两张卡（IPv4 / IPv6 上游）表头带 .active，主题用 bg-primary 表示
+   “接口已连接”。在整页卡片里那是一条通栏的实心色块：暗色模式下 primary 是
+   近白，亮色模式下是近黑，观感上像一块被反色了的板子。仪表盘里把这类表头
+   统一成与「端口状态」一致的弱化表面，用文字层级而不是色块来表达状态。 */
+#view .ifacebox .ifacebox-head.active {
+  background: var(--muted);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+/* 这两张卡是 IPv4 / IPv6 上游详情，行数固定且不多。原生 .ifacebox-body 在
+   .network-status-table 下有 justify-around，高度被拉到与邻卡对齐后会摊出
+   大片空白；这里改成从上往下排，卡片高度由内容决定。 */
+#view .network-status-table .ifacebox-body {
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 12px;
+}
+
+#view .network-status-table .ifacebox {
+  align-self: start;
+}
+
+/* ── 在线主机表 ─────────────────────────────────────────────────────── */
+
+#view #status_leases {
+  width: 100%;
+  font-size: 0.8125rem;
+}
+
+#view #status_leases th {
+  padding: 8px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+#view #status_leases td {
+  padding: 7px 6px;
+  vertical-align: middle;
+}
+
+#view #status_leases tbody tr {
+  transition: background-color 0.15s;
+}
+
+#view #status_leases tbody tr:hover {
+  background: var(--accent);
+}
+
+/* ── 窄屏 ───────────────────────────────────────────────────────────── */
+
+/* 低于网格断点时指标带仍然可用，但字号要降下来，否则「运行时间」会溢出。 */
+@media (max-width: 639px) {
+  .shadcn-metrics {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+  }
+
+  .shadcn-metric {
+    padding: 10px 12px;
+  }
+
+  .shadcn-metric-value {
+    font-size: 1.125rem;
+  }
+
+  #view .cbi-section > div > table.table td.td:first-child {
+    white-space: normal;
+  }
+}

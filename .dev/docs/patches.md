@@ -32,9 +32,15 @@ A JS patch must register `window.luciPatches[<stem>] = { mount, unmount }` and m
 
 Patch sources sit under `src/` (`src/media/patches/`, `src/resource/patches/`), inside Tailwind's automatic source scan, so a plain string like `createElement("table")` becomes a `.table` candidate emitted into `main.css`. `main.css` therefore excludes both patch directories with `@source not`; keep them excluded when adding a patch that builds DOM.
 
-## `admin-status-overview` — online-host drawer
+## `admin-status-overview` — dashboard band + online-host drawer
 
-The Overview page renders `#status_leases` with each host as plain text. This patch makes the host name and the IPv4 cell open a right-hand drawer listing that host's live connections (13 columns: app, protocol, line, external address, domain, source port, destination, destination port, up/down rate, cumulative up/down, state).
+The stock Overview page is a single column of `cbi-section`s, each a plain label/value table. The patch adds two things on top of it:
+
+**A metric band** (`admin-status-overview.js` + `.shadcn-metrics` in the patch CSS) inserted as `#view`'s first child: four tiles — uptime, load, memory, WAN traffic. Every number is read out of the tables already on the page (`sectionTable(title)` + `readPairs()`, and `parseProgress()` for the `cbi-progressbar` `title`), so the tiles and the tables below can never disagree and no second ubus round-trip is made. The sparklines are a real observation series — the patch samples CPU% and port byte counters into a 40-slot ring every 5 s — not decoration; `sparkPath()` draws a flat baseline for a single sample so the row does not go ragged on first paint. WAN rate is a byte delta between two samples timed with their own timestamps, since the timer drifts; the first round honestly reads `—` until there is a second sample to difference.
+
+The patch CSS also reflows the page: `#view` becomes a responsive grid, `.network-status-table` and `#status_leases` take the full row, and the key/value tables are tightened. Two device-specific traps live there: `.shadcn-metrics` **must** carry `grid-column: 1 / -1` (without it the band is treated as one grid cell, the four tiles collapse into a 2×2 and every section below shifts), and the port cards need `width: 100% !important` because LuCI sizes them with inline `width:100px`.
+
+**A host drawer.** The Overview page renders `#status_leases` with each host as plain text. The drawer makes the host name and the IPv4 cell open a right-hand slide-over listing that host's live connections (13 columns: app, protocol, line, external address, domain, source port, destination, destination port, up/down rate, cumulative up/down, state).
 
 Data comes from the theme's own rpcd object (`root/usr/share/rpcd/ucode/shadcn.uc` + `root/usr/share/ucode/shadcn/conntrack.uc`, ACL in `root/usr/share/rpcd/acl.d/shadcn.json`), **not** from `luci-app-trafficctl` — that package only offers per-host totals. The backend parses `/proc/net/nf_conntrack`, fingerprints the app by destination port, resolves names through dnsmasq, and computes rates as byte deltas between two samples.
 
@@ -49,7 +55,7 @@ Two rpcd details are load-bearing and cost time to find:
 
 The drawer polls on its own timer (default 1 s, presets 1–5 s in the toolbar). Rates read `—` on the first sample by design — one fetch can only yield cumulative totals. Connections the kernel does not account bytes for show `—` rather than a fake `0 B/s`.
 
-Three backend details cost time to find, and all three fail *silently* rather than erroring:
+Three backend details cost time to find, and all three fail _silently_ rather than erroring:
 
 - rpcd `args` needs the literal `'String'`. A lowercase variable name still renders a `String` signature but drops the argument, leaving `req.args` empty.
 - ucode has **no function hoisting**. A forward call throws at runtime and the caller swallows it, so a correct lease file produced an empty name map. Keep `loadLeases()` below `lanAddress()`.

@@ -73,7 +73,8 @@
   // 而固定成整数会把 48.7 显示成 49，和累计列的量级对不上。
   function fmtRate(n) {
     if (n == null || !isFinite(n)) return "—";
-    if (n < 1024) return (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10) + " B/s";
+    if (n < 1024)
+      return (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10) + " B/s";
     return fmtBytes(n) + "/s";
   }
 
@@ -92,9 +93,10 @@
     if (!text) return null;
     const src = String(text);
     // IPv4 优先逐段匹配；IPv6 用更宽的模式
-    const re = pattern === "v4"
-      ? /(?:^|[^0-9])([0-9]{1,3}(?:\.[0-9]{1,3}){3})/g
-      : /(?:^|[^0-9a-f:])([0-9a-f]{1,4}(?::[0-9a-f]{0,4}){2,})/gi;
+    const re =
+      pattern === "v4"
+        ? /(?:^|[^0-9])([0-9]{1,3}(?:\.[0-9]{1,3}){3})/g
+        : /(?:^|[^0-9a-f:])([0-9a-f]{1,4}(?::[0-9a-f]{0,4}){2,})/gi;
     const m = re.exec(src);
     if (!m) return null;
     const addr = m[1];
@@ -111,8 +113,7 @@
 
   // 取表头文字到列序号的映射。没有 thead 时退回第一行。
   function headerMap(table) {
-    const row =
-      table.querySelector("thead tr") ?? table.querySelector("tr");
+    const row = table.querySelector("thead tr") ?? table.querySelector("tr");
     if (!row) return null;
     const map = {};
     const cells = row.querySelectorAll("th, td");
@@ -246,6 +247,403 @@
     enrichTimer = window.setInterval(enrichTable, 500);
     enrichTable();
   }
+  // ── 指标带 ───────────────────────────────────────────────────────────
+
+  // 概览页原本是一列「标签 / 值」表格，最先要看的四个数埋在下面几屏。
+  // 这里在原生区块之前插一条磁贴带，数值全部从页面已有的表格里读，不另外
+  // 请求一次 ubus：同一时刻只存在一个数据源，磁贴与下方表格不会互相矛盾。
+  //
+  // 折线的历史来自本页自己的采样：每轮把 CPU 使用率与 WAN 速率压进定长
+  // 环形数组，页面一打开先是一条平线，几秒后才成形。这是真实观测序列，
+  // 不是画出来的示意图。
+
+  const SERIES_LEN = 40;
+
+  // 采样间隔。与 LuCI 的 pollinterval（5s）一致：读取的是它已经刷新的
+  // 内容，比它更勤只会重复读到同一批数字。
+  const SAMPLE_MS = 5000;
+
+  const series = {
+    cpu: [],
+    wan: [],
+  };
+
+  let metrics = null;
+  let sampleTimer = null;
+  // 上一次的网口累计字节数与对应的采样时刻，用于算瞬时总速率。
+  // 时间戳必须和计数一起存：两次采样之间的真实间隔随定时器抖动，
+  // 按固定的 5s 去除会把速率算错。
+  let lastIfBytes = null;
+
+  // 页面里某个区块的键值表读成 map。区块按标题定位 —— 表格本身没有 id，
+  // 而标题是 LuCI 稳定输出的。
+  function sectionTable(title) {
+    const mc = document.querySelector("#maincontent");
+    if (!mc) return null;
+
+    for (const sec of mc.querySelectorAll(".cbi-section")) {
+      const h = sec.querySelector("h3, h2, legend");
+      if (!h || (h.textContent || "").trim().replace(/隐藏$/, "") !== title)
+        continue;
+      return sec.querySelector("table.table") ?? sec.querySelector("table");
+    }
+
+    return null;
+  }
+
+  function readPairs(table) {
+    const out = {};
+    if (!table) return out;
+
+    for (const tr of table.querySelectorAll("tr")) {
+      const cells = tr.querySelectorAll("td");
+      if (cells.length < 2) continue;
+      const k = (cells[0].textContent || "").trim();
+      const v = cells[1];
+      if (k) out[k] = v;
+    }
+
+    return out;
+  }
+
+  // 从进度条的 title 里取「已用 / 总量 (百分比)」。LuCI 把三个数都放在
+  // title 上，是这里唯一不靠猜的来源。
+  function parseProgress(cell) {
+    const bar = cell && cell.querySelector(".cbi-progressbar");
+    if (!bar) return null;
+
+    const m = /^(.+?)\s*\/\s*(.+?)\s*\(([\d.]+)%\)$/.exec(
+      (bar.getAttribute("title") || "").trim(),
+    );
+    if (!m) return null;
+
+    return { used: m[1], total: m[2], pct: parseFloat(m[3]) };
+  }
+
+  // 网口累计收发字节。表里没有这个数，只有 tooltip 里的「已接收字节数:
+  // 9.02 GiB」这类字符串，所以按单位解析回字节再相加，跨网口求总速率。
+  const UNITS = {
+    B: 1,
+    KB: 1e3,
+    KiB: 1024,
+    MB: 1e6,
+    MiB: 1024 ** 2,
+    GB: 1e9,
+    GiB: 1024 ** 3,
+    TB: 1e12,
+    TiB: 1024 ** 4,
+  };
+
+  function parseBytes(text) {
+    if (!text) return null;
+    const m = /([\d.]+)\s*(B|KB|KiB|MB|MiB|GB|GiB|TB|TiB)/.exec(text);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    if (!isFinite(n)) return null;
+    return n * (UNITS[m[2]] ?? 1);
+  }
+
+  function portTotals() {
+    const mc = document.querySelector("#maincontent");
+    if (!mc) return null;
+
+    let rx = 0;
+    let tx = 0;
+    let found = false;
+
+    // 每个网口卡里都有两个 .cbi-tooltip：外层是「属于以下网络」，内层才是
+    // 收发计数。按最近一次的匹配取，而不是只看每张卡的第一个 tooltip ——
+    // 否则只会读到网络归属那一段，永远解析不到字节数。
+    for (const box of mc.querySelectorAll(".ifacebox")) {
+      const text = (box.textContent || "").replace(/\s+/g, " ");
+      const r = /已接收字节数\s*:\s*([\d.]+\s*[A-Za-z]+)/.exec(text);
+      const t = /已发送字节数\s*:\s*([\d.]+\s*[A-Za-z]+)/.exec(text);
+      if (!r && !t) continue;
+      found = true;
+      rx += (r ? parseBytes(r[1]) : 0) ?? 0;
+      tx += (t ? parseBytes(t[1]) : 0) ?? 0;
+    }
+
+    return found ? { rx, tx } : null;
+  }
+
+  function push(seriesRef, value) {
+    if (value == null || !isFinite(value)) return;
+    seriesRef.push(value);
+    if (seriesRef.length > SERIES_LEN) seriesRef.shift();
+  }
+
+  // 平滑成折线。只有一个样本时画一条水平基线：磁贴的折线区高度是固定的，
+  // 首轮缺一条线会让整排磁贴高低不齐。
+  function sparkPath(values, w, h) {
+    if (!values || !values.length) return null;
+
+    if (values.length === 1) {
+      const y = (h / 2).toFixed(1);
+      return {
+        line: `M0 ${y} L${w} ${y}`,
+        area: `M0 ${y} L${w} ${y} L${w} ${h} L0 ${h} Z`,
+      };
+    }
+
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    // 全等序列（例如 CPU 一直是 0%）会得到零高度，给一个人为的跨度让它
+    // 落在中线附近，而不是贴着底边。
+    if (max - min < 1e-9) {
+      const c = min;
+      min = c - 1;
+      max = c + 1;
+    }
+
+    const step = w / (values.length - 1);
+    const pts = values.map((v, i) => {
+      const x = i * step;
+      const y = h - ((v - min) / (max - min)) * h;
+      return [x, y];
+    });
+
+    const line = pts
+      .map(([x, y], i) => (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1))
+      .join(" ");
+    const area = line + " L" + w.toFixed(1) + " " + h + " L0 " + h + " Z";
+
+    return { line, area };
+  }
+
+  function svgNode(paths) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "shadcn-spark");
+    svg.setAttribute("viewBox", "0 0 100 34");
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("aria-hidden", "true");
+
+    for (const [d, cls] of [
+      [paths.area, "shadcn-spark-area"],
+      [paths.line, "shadcn-spark-line"],
+    ]) {
+      const p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d);
+      p.setAttribute("class", cls);
+      svg.appendChild(p);
+    }
+
+    return svg;
+  }
+
+  // 图标只有四个，直接内联，避免为一处磁贴额外发一次请求。
+  const ICONS = {
+    clock:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    cpu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>',
+    memory:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 7v10M10 7v10M14 7v10M18 7v10"/></svg>',
+    traffic:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 4-6 5 5"/><path d="M3 21h18"/></svg>',
+  };
+
+  // 一个磁贴。value/foot 之后由 updateMetric 填，避免整块重建时丢掉折线。
+  function tile(key, icon, label) {
+    const box = el("div", "shadcn-metric");
+    box.dataset.metric = key;
+
+    const head = el("div", "shadcn-metric-head");
+    const ic = el("span", "shadcn-metric-icon");
+    ic.innerHTML = ICONS[icon];
+    head.appendChild(ic);
+    head.appendChild(el("span", null, label));
+
+    const val = el("div", "shadcn-metric-value");
+    const foot = el("div", "shadcn-metric-foot");
+
+    box.appendChild(head);
+    box.appendChild(val);
+    box.appendChild(foot);
+    return box;
+  }
+
+  function setValue(box, text, unit) {
+    const val = box.querySelector(".shadcn-metric-value");
+    if (!val) return;
+    val.textContent = text;
+    if (unit) {
+      const u = el("span", "shadcn-metric-unit", unit);
+      val.appendChild(u);
+    }
+  }
+
+  function setFoot(box, text) {
+    const foot = box.querySelector(".shadcn-metric-foot");
+    if (foot) foot.textContent = text;
+  }
+
+  // 折线区域每次重建：路径就是两个字符串，重建比原地改 d 更少出错。
+  function setSpark(box, values) {
+    const old = box.querySelector(".shadcn-spark");
+    const paths = sparkPath(values, 100, 34);
+    if (old) old.remove();
+    if (!paths) return;
+    // 插在 foot 之前，视觉上数值与说明之间
+    const foot = box.querySelector(".shadcn-metric-foot");
+    box.insertBefore(svgNode(paths), foot);
+  }
+
+  function setMeter(box, pct) {
+    let meter = box.querySelector(".shadcn-meter");
+    if (!meter) {
+      meter = el("div", "shadcn-meter");
+      meter.appendChild(el("span"));
+      const foot = box.querySelector(".shadcn-metric-foot");
+      box.insertBefore(meter, foot);
+    }
+    const fill = meter.firstElementChild;
+    if (fill) fill.style.width = Math.max(0, Math.min(100, pct || 0)) + "%";
+  }
+
+  function buildMetrics() {
+    const band = el("div", "shadcn-metrics");
+    band.appendChild(tile("uptime", "clock", "运行时间"));
+    band.appendChild(tile("load", "cpu", "系统负载"));
+    band.appendChild(tile("memory", "memory", "内存占用"));
+    band.appendChild(tile("traffic", "traffic", "WAN 流量"));
+    return band;
+  }
+
+  // 把页面上的数字搬进磁贴。数据缺失时如实显示 “—”，不留占位假值。
+  function updateMetrics() {
+    if (!metrics || !metrics.isConnected) return;
+
+    const sys = readPairs(sectionTable("系统"));
+    const mem = readPairs(sectionTable("内存"));
+
+    const uptimeCell = sys["运行时间"];
+    const uptimeText = uptimeCell ? (uptimeCell.textContent || "").trim() : "";
+    const loadCell = sys["平均负载"];
+    const loadText = loadCell ? (loadCell.textContent || "").trim() : "";
+    const cpuCell = sys["CPU 使用率（%）"];
+    const cpuText = cpuCell ? (cpuCell.textContent || "").trim() : "";
+
+    // 运行时间
+    const uptime = metrics.querySelector('[data-metric="uptime"]');
+    if (uptime) {
+      setValue(uptime, uptimeText || "—");
+      setFoot(
+        uptime,
+        (sys["主机名"] ? (sys["主机名"].textContent || "").trim() : "") ||
+          "本机",
+      );
+    }
+
+    // 负载 + CPU 折线
+    const cpuNow = parseFloat(cpuText);
+    push(series.cpu, isFinite(cpuNow) ? cpuNow : null);
+
+    const loadBox = metrics.querySelector('[data-metric="load"]');
+    if (loadBox) {
+      const first = loadText.split(",")[0] || "—";
+      const cores =
+        (sys["架构"] ? sys["架构"].textContent || "" : "").match(
+          /(\d+)C/,
+        )?.[1] ?? null;
+      setValue(loadBox, first.trim(), cores ? "/ " + cores + " 核" : "");
+      setFoot(
+        loadBox,
+        "CPU " +
+          (cpuText || "—") +
+          (loadText ? " · 1/5/15 分钟 " + loadText : ""),
+      );
+      setSpark(loadBox, series.cpu);
+    }
+
+    // 内存
+    const memBox = metrics.querySelector('[data-metric="memory"]');
+    if (memBox) {
+      const avail = parseProgress(mem["可用数"]);
+      if (avail) {
+        setValue(memBox, avail.pct.toFixed(0) + "%", "已用");
+        setFoot(memBox, avail.used + " / " + avail.total);
+        setMeter(memBox, avail.pct);
+      } else {
+        setValue(memBox, "—");
+        setFoot(memBox, "读取内存信息失败");
+        setMeter(memBox, 0);
+      }
+    }
+
+    // WAN 流量：按两次采样的累计字节差求总速率
+    const now = portTotals();
+    const traffic = metrics.querySelector('[data-metric="traffic"]');
+    if (traffic) {
+      const at = Date.now();
+      if (now && lastIfBytes && lastIfBytes.at) {
+        const dt = (at - lastIfBytes.at) / 1000;
+        const dUp = now.tx - lastIfBytes.tx;
+        const dDown = now.rx - lastIfBytes.rx;
+        // 累计值回落说明计数器被重置（网口重连），这一轮速率不可信
+        const up = dUp >= 0 && dt > 0 ? dUp / dt : null;
+        const down = dDown >= 0 && dt > 0 ? dDown / dt : null;
+        if (up != null && down != null) push(series.wan, up + down);
+        setValue(traffic, fmtRate(down), "↓");
+        setFoot(
+          traffic,
+          "↑ " +
+            fmtRate(up) +
+            " · 累计 " +
+            fmtBytes(now.rx) +
+            " / " +
+            fmtBytes(now.tx),
+        );
+      } else if (now) {
+        // 计数器已可读但还没有上一轮可比：本轮的数据就是基线，下一轮起
+        // 才有速率。这里不猜一个比值，如实说明。
+        setValue(traffic, "—", "↓");
+        setFoot(
+          traffic,
+          "累计 " +
+            fmtBytes(now.rx) +
+            " / " +
+            fmtBytes(now.tx) +
+            "，速率待下一轮",
+        );
+      } else {
+        setValue(traffic, "—");
+        setFoot(traffic, "读取网口计数失败");
+      }
+      if (now) lastIfBytes = { rx: now.rx, tx: now.tx, at };
+      setSpark(traffic, series.wan);
+    }
+  }
+
+  // 指标带插在第一个区块之前。LuCI 会重建 `#view` 的内容，所以每轮采样前
+  // 都确认一次它还在，而不是假设第一次插进去就一直在。
+  function ensureMetrics() {
+    const view = document.getElementById("view");
+    if (!view) return false;
+
+    if (metrics && metrics.isConnected) return true;
+
+    metrics = view.querySelector(".shadcn-metrics") ?? buildMetrics();
+    if (!metrics.parentElement) view.insertBefore(metrics, view.firstChild);
+
+    return true;
+  }
+
+  // 一轮采样：先确保磁贴在页面上，再更新数字。
+  function sampleTick() {
+    if (ensureMetrics()) updateMetrics();
+  }
+
+  function startSampling() {
+    if (sampleTimer) return;
+    sampleTimer = window.setInterval(sampleTick, SAMPLE_MS);
+  }
+
+  function stopSampling() {
+    if (!sampleTimer) return;
+    clearInterval(sampleTimer);
+    sampleTimer = null;
+  }
 
   // ── drawer ───────────────────────────────────────────────────────────
 
@@ -278,7 +676,7 @@
       '    <div class="shadcn-drawer-actions">' +
       '      <label class="shadcn-drawer-interval">' +
       "        <span>刷新</span>" +
-      '        <select data-interval></select>' +
+      "        <select data-interval></select>" +
       "        <span>秒</span>" +
       "      </label>" +
       '      <button type="button" class="shadcn-drawer-close" data-close aria-label="关闭">×</button>' +
@@ -427,7 +825,9 @@
     if (!data || data.available === false) {
       if (empty) {
         empty.hidden = false;
-        empty.textContent = data?.error ? "读取连接失败：" + data.error : "暂无数据";
+        empty.textContent = data?.error
+          ? "读取连接失败：" + data.error
+          : "暂无数据";
       }
       tbody.textContent = "";
       return;
@@ -536,6 +936,8 @@
 
   function mount() {
     watchTable();
+    sampleTick();
+    startSampling();
     document.addEventListener("keydown", onKey);
     document.addEventListener("click", onClick);
   }
@@ -551,6 +953,14 @@
       enrichTimer = null;
     }
     document.removeEventListener("keydown", onKey);
+    stopSampling();
+    if (metrics) {
+      metrics.remove();
+      metrics = null;
+    }
+    series.cpu.length = 0;
+    series.wan.length = 0;
+    lastIfBytes = null;
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;

@@ -1,10 +1,21 @@
 /* shadcn Progress — LuCI progress bar.
    Official: h-2 rounded-full track at bg-primary/20 with a solid bg-primary
    indicator. The LuCI bar also renders its `title` as centred overlay text,
-   which the theme keeps. */
+   which the theme keeps.
+
+   The overlay label needed a surface of its own. It was `--foreground`, which
+   in dark mode is near-white — and so is `--primary`, the colour of the filled
+   segment. Over the filled part the label and the fill are the same near-white,
+   measured at 1.2 contrast on the reference device, so the number faded out
+   exactly on the part of the bar that was full. A translucent plate behind the
+   text (--background-a60, which already flips with the theme) keeps the label
+   legible over both the filled and the unfilled segments.
+
+   The bar is also taller than the official h-2: the label is 10px with a 1
+   line-height, so an 8px box cut a pixel off its top and bottom. */
 .cbi-progressbar {
-  @apply bg-primary-a20 relative h-2 w-full cursor-help overflow-hidden rounded-full;
-  @apply before:text-foreground before:absolute before:inset-x-0 before:top-1/2 before:-translate-y-1/2 before:text-center before:text-[10px] before:leading-none before:whitespace-nowrap before:content-[attr(title)];
+  @apply bg-primary-a20 relative h-5 w-full cursor-help overflow-hidden rounded-full;
+  @apply before:text-foreground before:bg-background-a60 before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-sm before:px-1.5 before:py-px before:text-center before:text-[10px] before:leading-none before:whitespace-nowrap before:content-[attr(title)];
 
   > div {
     @apply bg-primary h-full [transition:width_.3s];

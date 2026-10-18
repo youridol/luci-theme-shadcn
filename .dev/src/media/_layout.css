@@ -80,7 +80,15 @@ html[data-sidebar-collapsed="true"] #sidebar {
    1.125. Anchoring on the row (this theme's rows are 31.5px) puts the pitch at
    35.4px, so the 4px of air between neighbours becomes mb-1 (3.5px at the 14px
    root that `html`'s `text-sm` sets). Expressing the gap in rem — not fixed px
-   — keeps the ratio at any root size. */
+   — keeps the ratio at any root size.
+
+   The gap only ever applied *between* top-level rows, so an open section's
+   highlight ran straight into the row below it: the parent's selected band
+   ended exactly where the first sub-item began (both at y=87.5px on the
+   reference device), and with bg-sidebar-accent on both the two surfaces read
+   as one block. The accordion body therefore carries its own top padding —
+   enough air that the section header reads as a header, not as the first row
+   of a stack — and the sub-list gets a matching bottom gap. */
 .sidebar-nav-item,
 .sidebar-accordion-item {
   @apply mb-1;
@@ -91,6 +99,29 @@ html[data-sidebar-collapsed="true"] #sidebar {
   &.active > .sidebar-nav-parent {
     @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
   }
+}
+
+/* A section header that is merely *open* is a different state from a section
+   header that *contains the current page*: open-only used to take the same
+   bg-sidebar-accent as an active row, so on a page load the hovered section,
+   the open section and the current row all wore the same band and the current
+   row was indistinguishable. Open-only now keeps the resting surface and gets
+   emphasis from the label alone. */
+.sidebar-accordion-item[data-open="true"] {
+  > .sidebar-nav-parent {
+    @apply text-sidebar-foreground;
+
+    &:hover {
+      @apply bg-sidebar-accent text-sidebar-accent-foreground;
+    }
+  }
+}
+
+/* The active section wins over the open-only rule above, whatever the source
+   order: both selectors are equal on specificity, so this has to come after. */
+.sidebar-nav-item.active > .sidebar-nav-parent,
+.sidebar-accordion-item.active > .sidebar-nav-parent {
+  @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
 }
 
 .sidebar-nav-parent {
@@ -119,9 +150,6 @@ html[data-sidebar-collapsed="true"] #sidebar {
 
 .sidebar-accordion-item {
   &[data-open="true"] {
-    > .sidebar-nav-parent {
-      @apply bg-sidebar-accent text-sidebar-accent-foreground;
-    }
     .sidebar-chevron {
       @apply rotate-180;
     }
@@ -151,8 +179,14 @@ html[data-sidebar-collapsed="true"] #sidebar {
   @apply visible grid-rows-[1fr] opacity-100;
 }
 
+/* Air between a section header and its own list. This lives on the list, not
+   on the grid container: the container's 0fr track treats padding as a floor,
+   which is why the collapse has to stay padding-free. The list is sized by its
+   own content, so a top pad here only ever exists while the section is open,
+   and `visibility` (not `display`) still takes the whole body out of the tab
+   order when it closes. */
 .sidebar-sub-list {
-  @apply border-sidebar-border ml-4 list-none border-l pl-2;
+  @apply border-sidebar-border ml-4 list-none border-l pt-1.5 pl-2;
 }
 
 .sidebar-sub-item {
@@ -161,6 +195,12 @@ html[data-sidebar-collapsed="true"] #sidebar {
      31.5px), so their centre pitch lands at 31.5px rather than 35px — that
      follows from the row height, not from a different gap. */
   @apply mb-1;
+
+  /* The last row's gap would land on top of the section's own mb-1 and double
+     the distance to the next section header. */
+  &:last-child {
+    @apply mb-0;
+  }
 
   /* Official SidebarMenuSubButton active: bg-sidebar-accent + font-medium. */
   &.active .sidebar-sub-link {
