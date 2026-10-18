@@ -258,20 +258,54 @@ function run(cmd) {
 //
 // 解析 "N% packet loss" 与 round-trip 行的 avg 值；解析不出来时 loss 为 null，
 // 表示「没测出来」而不是「零丢包」—— 两者含义完全不同，不能混。
+// 目标是否真的在链路上（有 ARP 应答）。
+//
+// 判据是邻居表里有没有 lladdr（MAC）：
+//   · 有 lladdr（REACHABLE / STALE / DELAY）→ 这台机器存在，只是可能不回应
+//     ICMP 或真的在丢包；
+//   · FAILED / 无条目 → ARP 都解析不到，机器不在这个网段或已关机。
+//
+// **为什么不能用 ping 的报错文本**：busybox 的 ping 在目标不存在时**什么额外
+// 信息都不打**，只输出「5 packets transmitted, 0 received, 100% packet loss」。
+// 实测 192.168.99.99（网段里没有这个地址）就是这个输出，和「目标在线但丢包」
+// 完全一样。所以只能从邻居表这一侧判断取目标是否可信。
+function hasNeighbour(ip) {
+	const out = run(`ip neigh show ${ip} 2>&1`);
+
+	if (out == null)
+		return false;
+
+	// 必须有 lladdr 才算「解析到了 MAC」；FAILED 行只有 IP 和状态，没有 lladdr。
+	return match(out, /lladdr[ \t]+\S+/) != null;
+}
+
+// ping 一个目标，返回 { loss, rtt, at, unreachable, target }。
+//
+// unreachable 的语义是「目标主机不在这个网段 / 已下线」，此时 loss 为 null。
+// 判定分两步，缺一不可：
+//
+//   1. ping 拿到 100% 丢包；
+//   2. 邻居表里查不到它的 MAC。
+//
+// 只有 1 时不能断言离线 —— 机器在线但防火墙丢 ICMP 的情况很常见（0% 之外
+// 的丢包也可能是真的拥塞）。两步都成立才认为「这台机器不在了」。
 function pingLoss(target) {
 	const out = run(`ping -c ${LOSS_COUNT} -W ${LOSS_TIMEOUT} ${target} 2>&1`);
 
 	if (out == null)
-		return { loss: null, rtt: null, at: epoch() };
+		return { loss: null, rtt: null, at: epoch(), unreachable: false, target: target };
 
 	const lossM = match(out, /([0-9]+)% packet loss/);
 	const rttM = match(out, /round-trip[^=]*=[ \t]*([0-9.]+)\/([0-9.]+)\/([0-9.]+)/);
 
-	return {
-		loss: lossM != null ? +lossM[1] : null,
-		rtt: rttM != null ? +rttM[2] : null,
-		at: epoch(),
-	};
+	const loss = lossM != null ? +lossM[1] : null;
+	const rtt = rttM != null ? +rttM[2] : null;
+
+	// 100% 丢包时再查邻居表：没有 MAC 才判离线。
+	if (loss == 100 && !hasNeighbour(target))
+		return { loss: null, rtt: null, at: epoch(), unreachable: true, target: target };
+
+	return { loss: loss, rtt: rtt, at: epoch(), unreachable: false, target: target };
 }
 
 // 读默认网关（外网探针）与本机 LAN 地址（内网探针）。
@@ -289,30 +323,108 @@ function defaultGateway() {
 	return m != null ? m[1] : null;
 }
 
-// 内网探针目标：从 br-lan 的 ARP/邻居表里挑一台**真实存在**的设备。
+// 内网探针目标：从 br-lan 的邻居表里挑一台**刚刚通过信**的设备。
 //
-// 为什么不能猜网关 .1：实测这台设备的 192.168.3.1 与 .2 都 100% 丢包（网段里
-// 根本没这两台机器），而 .238、.254 正常。按「网关 = .1」的惯例取目标，会把
-// 一个不存在的地址测成 100% 丢包，看板上显示成「内网全丢」—— 明明是探针选错，
-// 却像线路故障。
+// 为什么不能猜网关 .1：实测这台设备的 192.168.3.1 是 PERMANENT 静态表项
+// （有 lladdr 但 ping 100% 不通），与 .2 一样。按「网关 = .1」的惯例取目标，
+// 会把一个不存在的地址测成 100% 丢包，看板显示成「内网全丢」—— 明明是探针
+// 选错，却像线路故障。
 //
-// 判据用邻居表的状态：REACHABLE / STALE / DELAY 说明这台机器回应过 ARP，
-// 是真的在线；FAILED / INCOMPLETE 说明解析不到，跳过。挑不到就返回 null，
-// 让上层如实显示「无内网探针」，不硬编一个地址去测。
-function lanTarget() {
+// 状态只认 REACHABLE：它是「最近一次 ARP 交互成功」的确切证据。
+//   · STALE / DELAY / PROBE 只说明曾经有过 lladdr，不代表现在还活着 ——
+//     一台刚拔网线的设备会长时间停在 STALE，拿它当探针会继续报 100% 丢包；
+//   · FAILED / INCOMPLETE 是解析失败，本就该排除；
+//   · PERMANENT 是静态表项（管理员手工加的），与实际可达性无关，也排除。
+//
+// 优先取 IP 小的（通常是常开的设备），但不依赖这一点 —— 上层会在 ping 不通时
+// 换下一个候选（见 pickInnerTarget）。
+function lanCandidates() {
 	const out = run('ip neigh show dev br-lan 2>&1');
 
 	if (out == null)
-		return null;
+		return [];
+
+	const hits = [];
 
 	for (let line in split(out, '\n')) {
-		const m = match(line, /^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)[ \t]+lladdr[ \t]+\S+[ \t]+(REACHABLE|STALE|DELAY|PROBE)/);
+		const m = match(line, /^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)[ \t]+lladdr[ \t]+\S+[ \t]+REACHABLE/);
 
 		if (m != null)
-			return m[1];
+			push(hits, m[1]);
 	}
 
-	return null;
+	// 稳定的顺序：同一个网段里 IP 小的通常更常在线（网关、NAS、AP）。
+	sort(hits, function (a, b) {
+		const pa = split(a, '.');
+		const pb = split(b, '.');
+
+		for (let i = 0; i < 4; i++) {
+			const d = +pa[i] - +pb[i];
+
+			if (d != 0)
+				return d;
+		}
+
+		return 0;
+	});
+
+	return hits;
+}
+
+/* 挑内网探针并处理「主机离线」。
+
+   核心问题：邻居表只能证明「不久前有过 lladdr」，不能保证此刻还在线。
+   一台设备关机后，邻居表可能还留着它的条目，于是下一轮 ping 得到 100% 丢包，
+   看板显示「内网丢包 100%」—— 而内网其实好好的，只是那台机器关了。
+
+   所以这里做两件事：
+     1. 优先用上一轮测成功的地址（store.inner.target）：连通的探针才有可比性，
+        每轮换目标会让丢包率曲线毫无意义；
+     2. 如果它不可达（unreachable），换下一个候选重测一次。换过之后若仍然
+        不可达，说明整个候选池都不可信，如实返回 unreachable，不输出假数字。
+
+   只重试一次：采样器是后台循环，多试几个候选会把单轮时间拉长到十几秒，
+   反而影响每分钟一次的节奏。 */
+function pickInnerTarget(store) {
+	const candidates = lanCandidates();
+
+	if (length(candidates) == 0)
+		return null;
+
+	// 先把上一轮成功的目标提到最前。
+	const prev = (store.inner != null) ? store.inner.target : null;
+	const ordered = [];
+
+	if (prev != null) {
+		for (let c in candidates)
+			if (c == prev)
+				push(ordered, c);
+
+		if (length(ordered) == 0 && match(prev, /^[0-9.]+$/) != null)
+			push(ordered, prev);
+	}
+
+	for (let c in candidates)
+		if (c != prev)
+			push(ordered, c);
+
+	for (let target in ordered) {
+		const rec = pingLoss(target);
+
+		if (!rec.unreachable) {
+			rec.target = target;
+			return rec;
+		}
+	}
+
+	// 全部候选都不可达：带上最后一个目标，让前端能说明「探的是谁、它离线」。
+	return {
+		loss: null,
+		rtt: null,
+		at: epoch(),
+		unreachable: true,
+		target: ordered[0],
+	};
 }
 
 function sampleLoss(state) {
@@ -331,23 +443,41 @@ function sampleLoss(state) {
 	if (type(store) != 'object')
 		store = {};
 
-	// 轮流测：这一轮内网、下一轮外网，由 store.turn 记着上次测了谁。
-	const inner = lanTarget();
-	const outer = defaultGateway();
-
-	if (inner == null && outer == null)
-		return false;
-
+	/* 轮流测：这一轮内网、下一轮外网，由 store.turn 记着上次测了谁。
+	   每轮只 ping 一个目标，所以每分钟的成本上限是一次 ping（内网那轮可能
+	   重试一次，见 pickInnerTarget）。 */
 	const turn = store.turn == 'outer' ? 'inner' : 'outer';
 
-	if (turn == 'inner' && inner != null) {
-		store.inner = pingLoss(inner);
-		store.inner.target = inner;
+	if (turn == 'inner') {
+		// pickInnerTarget 自己完成 ping（含离线换目标），返回值直接落盘。
+		const rec = pickInnerTarget(store);
+
+		if (rec == null) {
+			// 邻居表里一台 REACHABLE 都没有：如实说没有探针，不硬编地址。
+			store.inner = null;
+			store.innerReason = '内网没有刚通信过的设备可作探针';
+		}
+		else {
+			store.inner = rec;
+			store.innerReason = null;
+		}
+
 		store.turn = 'inner';
 	}
-	else if (outer != null) {
-		store.outer = pingLoss(outer);
-		store.outer.target = outer;
+	else {
+		const outer = defaultGateway();
+
+		if (outer == null) {
+			store.outer = null;
+			store.outerReason = '读不到默认网关';
+		}
+		else {
+			const rec = pingLoss(outer);
+			rec.target = outer;
+			store.outer = rec;
+			store.outerReason = null;
+		}
+
 		store.turn = 'outer';
 	}
 

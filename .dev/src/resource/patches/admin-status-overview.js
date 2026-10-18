@@ -1240,22 +1240,38 @@
     const lossBox = dashEl("div", "shadcn-dash-loss");
     lossBox.appendChild(dashEl("span", "shadcn-dash-loss-title", "丢包率"));
 
+    /* 每一格：区域 / 目标 IP / 丢包率 / 时龄。
+
+       目标 IP 必须露出来，不能只塞在 title 里。两个原因：
+         · 内网探针是「邻居表里挑的一台设备」，不是网关、也不是整段 LAN。
+           不写出它是谁，「内网 5%」会被读成整个内网都在丢包。
+         · 外网探针是一跳网关。换网关后这个数字的含义就变了，运维需要知道
+           它到底在测哪一跳。
+
+       状态分四种，含义完全不同，不能混成同一个「—」：
+         · 有 loss     → 显示百分比；
+         · unreachable → 主机离线（**不是丢包**）；
+         · 无探针      → 说明原因（邻居表没有可测设备 / 读不到网关）；
+         · 还没测过    → 等待采样。 */
     const sides = [
-      ["内网", loss && loss.inner],
-      ["外网", loss && loss.outer],
+      ["内网", loss && loss.inner, loss && loss.innerReason],
+      ["外网", loss && loss.outer, loss && loss.outerReason],
     ];
 
-    for (const [label, rec] of sides) {
+    for (const [label, rec, reason] of sides) {
       const cell = dashEl("span", "shadcn-dash-loss-cell");
       cell.appendChild(dashEl("span", "shadcn-dash-muted", label));
 
+      // 目标地址：只要有就显示，没有探针时这一格空着。
+      const target = rec && rec.target ? rec.target : null;
+      if (target) {
+        cell.appendChild(dashEl("span", "shadcn-dash-loss-target", target));
+      }
+
       if (rec && rec.loss != null) {
         const v = dashEl("strong", null, rec.loss + "%");
-        /* title 里写清探的是谁。
-           内网探针是一台实际在线的 LAN 设备（从 ARP 表里挑的），不是网关 ——
-           没有目标地址的话，「内网 5%」会被理解成整段 LAN 都在丢包。 */
         v.title =
-          (rec.target ? "目标 " + rec.target + " · " : "") +
+          (target ? "目标 " + target + " · " : "") +
           (rec.rtt != null ? "RTT " + rec.rtt.toFixed(1) + " ms" : "无 RTT") +
           " · 测于 " +
           dashAgo(rec.at);
@@ -1265,14 +1281,27 @@
         cell.appendChild(
           dashEl("span", "shadcn-dash-loss-when", dashAgo(rec.at)),
         );
+      } else if (rec && rec.unreachable) {
+        /* 主机离线。这一格绝不能显示 100% —— 那意味着「链路在丢包」，
+           而实际情况是这台机器不在线，内网/外网本身并没有丢包。 */
+        const v = dashEl("strong", null, "离线");
+        v.dataset.tone = "muted";
+        v.title =
+          "目标 " +
+          (target || "?") +
+          " 不可达（可能已关机或已断网）· 测于 " +
+          dashAgo(rec.at);
+        cell.appendChild(v);
+        cell.appendChild(
+          dashEl("span", "shadcn-dash-loss-when", dashAgo(rec.at)),
+        );
       } else {
         cell.appendChild(dashEl("strong", null, "—"));
         const why =
-          loss && !loss.available && loss.reason
+          reason ||
+          (loss && !loss.available && loss.reason
             ? loss.reason
-            : label === "内网"
-              ? "无在线 LAN 设备可探测"
-              : "等待采样（每分钟测一次）";
+            : "等待采样（每分钟测一次）");
         cell.appendChild(dashEl("span", "shadcn-dash-loss-when", why));
       }
 

@@ -1350,7 +1350,26 @@ html.shadcn-drawer-lock body {
     &[data-tone="warn"] {
       color: var(--foreground);
     }
+
+    /* 「离线」不是警告，是「这台机器不在」。用次要色区分于 0% 的正常值，
+       也不加粗 —— 加粗会让人以为线路出了问题。 */
+    &[data-tone="muted"] {
+      color: var(--muted-foreground);
+      font-weight: 500;
+    }
   }
+}
+
+/* 探针目标地址。
+   等宽字体：IP 用比例字体时数字宽度不一，「192.168.3.206」与
+   「100.119.0.1」并排会看着歪。小一号是为了不抢丢包率本身的注意力。 */
+.shadcn-dash-loss-target {
+  font-family:
+    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: -0.01em;
+  color: var(--muted-foreground);
+  white-space: nowrap;
 }
 
 .shadcn-dash-loss-when {

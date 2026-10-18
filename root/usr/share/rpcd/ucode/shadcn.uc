@@ -273,14 +273,18 @@ function loadLoss() {
 	const pick = function (side) {
 		const s = parsed[side];
 
-		if (type(s) != 'object' || s.loss == null)
+		if (type(s) != 'object')
 			return null;
 
+		/* unreachable: 目标主机不在线（ping 报 Destination Host Unreachable）。
+           这时 loss 必须是 null —— 把它当 100% 丢包显示是错的：内网没丢包，
+           是那台机器不在。前端据 unreachable 显示「主机离线」。 */
 		return {
-			loss: s.loss,
+			loss: (s.unreachable == true) ? null : s.loss,
 			rtt: s.rtt,
 			at: s.at,
 			target: s.target,
+			unreachable: s.unreachable == true,
 		};
 	};
 
@@ -288,6 +292,9 @@ function loadLoss() {
 		available: true,
 		inner: pick('inner'),
 		outer: pick('outer'),
+		// 没有探针时的原因（邻居表为空 / 读不到网关），前端据此说明。
+		innerReason: parsed.innerReason ?? null,
+		outerReason: parsed.outerReason ?? null,
 	};
 }
 
