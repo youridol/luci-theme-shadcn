@@ -30,7 +30,7 @@ table.table,
   .cbi-section-table-titles.named,
   .cbi-section-table-descr.named,
   .cbi-section-table-row[data-title] {
-    @apply before:border-border before:table-cell before:border-b before:px-3 before:py-2.5 before:align-middle before:text-sm before:font-semibold before:content-[attr(data-title)];
+    @apply before:border-border before:table-cell before:border-b before:px-2 before:py-2 before:align-middle before:text-sm before:font-semibold before:content-[attr(data-title)];
     &:not([data-title]),
     &:has(td.cbi-section-table-titles) {
       @apply before:content-none;
@@ -96,8 +96,12 @@ table.table,
        block instead — the header cells then stack one per line while the
        body's .td cells, which do declare table-cell below, stay in columns.
        Declaring it here keeps the two symmetric. On a real <table> it is a
-       no-op, and `max-md:hidden` still removes the header on mobile. */
-    @apply border-border bg-muted text-foreground table-cell h-10 border-b px-3 py-2.5 text-left text-sm font-medium max-md:hidden;
+       no-op, and `max-md:hidden` still removes the header on mobile.
+
+       度量对齐参考站（shadcn-admin 的 tasks 页）：表头高 40px、左右内边距
+       8px、字号 14px / 字重 500。所以这里写 h-10 + px-2，比原先的 px-3
+       （12px）紧凑；行高仍是 40px，呼吸感由行高给，不靠内边距堆。 */
+    @apply border-border bg-muted text-foreground table-cell h-10 border-b px-2 py-2 text-left text-sm font-medium max-md:hidden;
 
     &[width="100%"] {
       @apply w-full;
@@ -119,7 +123,9 @@ table.table,
 
   td,
   .td {
-    @apply border-border table-cell border-b px-3 py-2.5 align-middle break-words whitespace-normal max-md:flex-[1_1_50%] max-md:border-0 max-md:px-1 max-md:py-1;
+    /* 内边距对齐参考站：单元格四周 8px（p-2），行高约 49px（8+8+内容）。
+       原来是 px-3 py-2.5（12px / 10px），比参考站松，长表格一屏少两行。 */
+    @apply border-border table-cell border-b px-2 py-2 align-middle break-words whitespace-normal max-md:flex-[1_1_50%] max-md:border-0 max-md:px-1 max-md:py-1;
     @apply before:hidden before:content-[attr(data-title)] before:max-md:mb-1 before:max-md:block before:max-md:text-xs before:max-md:font-semibold;
 
     > input[type="text"],

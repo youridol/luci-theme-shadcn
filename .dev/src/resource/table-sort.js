@@ -203,6 +203,37 @@
     return table.querySelector('th[data-sortable-row="true"]') != null;
   }
 
+  /* 这张表值不值得排序。
+
+     实测踩到的误判：实时信息页的统计汇总表（UDP / TCP / 其它，三行六列）被
+     加了排序菜单，但它既没有表头也无可推断的列名，菜单里只能显示「第 1 列
+     ↑」…「第 6 列 ↓」这种对用户毫无意义的条目。这类表是「读数面板」而不是
+     列表，不该给排序。
+
+     三条判据：
+       · 至少 3 个数据行 —— 两行排序没有意义；
+       · 能推出至少两个列名 —— 全推不出来说明这是无表头的读数面板；
+       · 不是统计汇总（行首是「XX：」这种带冒号的固定标签）。 */
+  function worthSorting(table, rows, labels) {
+    if (rows.length < 3) return false;
+
+    var named = 0;
+    for (var i = 0; i < labels.length; i++)
+      if (labels[i] && labels[i].indexOf("第 ") !== 0) named++;
+    if (named < 2) return false;
+
+    // 统计汇总表：每行第一格形如「UDP：」「TCP：」。
+    var summary = 0;
+    for (var j = 0; j < rows.length; j++) {
+      var first = rows[j].children[0];
+      if (first && /[：:]\s*$/.test((first.textContent || "").trim()))
+        summary++;
+    }
+    if (summary === rows.length) return false;
+
+    return true;
+  }
+
   function addSortMenu(table) {
     if (
       table.previousElementSibling &&
@@ -212,11 +243,13 @@
       return;
 
     var rows = bodyRows(table);
-    if (rows.length < 2) return;
+    if (rows.length < 3) return;
 
     var head = headerCells(table);
 
-    // 列名：优先表头的文本，其次单元格的 data-title，最后退回「第 N 列」。
+    /* 列名从三处推，按可信度排：表头文本 → 单元格的 data-title（LuCI 在
+       移动端折叠时写它当列名）→ 「第 N 列」。三处都推不出来的表由
+       worthSorting 挡掉，不会建出满是「第 N 列」的菜单。 */
     var first = rows[0];
     var options = [];
 
@@ -232,6 +265,18 @@
     }
 
     if (!options.length) return;
+
+    // 读数面板 / 统计汇总表不建菜单（见 worthSorting 的说明）。
+    if (
+      !worthSorting(
+        table,
+        rows,
+        options.map(function (o) {
+          return o.label;
+        }),
+      )
+    )
+      return;
 
     var bar = document.createElement("div");
     bar.className = "shadcn-sort-menu";
