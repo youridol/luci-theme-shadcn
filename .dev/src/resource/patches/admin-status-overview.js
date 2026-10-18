@@ -1008,6 +1008,9 @@
     // 不可用」。
     const native = dashEl("button", "shadcn-dash-btn", "原生概览");
     native.type = "button";
+    // 明确标出来供窄屏 CSS 让它跨满整行；不能靠 [aria-pressed] 选，
+    // 「暂停」也带这个属性。
+    native.dataset.role = "native";
     native.setAttribute("aria-pressed", "false");
     native.addEventListener("click", function () {
       const showing = root.dataset.showNative === "true";

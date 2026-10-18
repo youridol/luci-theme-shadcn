@@ -44,7 +44,16 @@
 }
 
 html {
-  @apply bg-background text-foreground font-sans text-sm;
+  /* 16px root, like main.css: the login page is a separate entry and does not
+     inherit _base.css, so it has to repeat the decision. Body copy stays 14px
+     below, which keeps the form the size it has always been while any rem-based
+     chrome around it matches the admin shell. */
+  font-size: 16px;
+  @apply bg-background text-foreground font-sans;
+}
+
+body {
+  font-size: 0.875rem;
 }
 
 /* ── Entry animations ── */

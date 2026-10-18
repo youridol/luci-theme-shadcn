@@ -27,13 +27,24 @@ To make an entrance conditional (a drawer that must not replay on load), drive i
 ## Tokens
 
 - **Token source**: the engine and resolver (operators, `createResolver`, CSS emission helpers) come from `@eamonxg/luci-theme-tokens` (`/engine`, `/emit`); this repo only keeps `tokens/spec.js` (derivations, baked-alpha variants) + `tokens/defaults.js` (input colors). Edit those, then run `pnpm gen:tokens`. Do not edit generated `src/media/_tokens.css` directly.
-- **`_tokens.css`**: generated flat OKLCH custom properties for light and dark modes plus the shared `@theme inline` mapping. It is imported by both `main.css` and `login.css`; runtime token-based `color-mix()` and relative `oklch(from …)` are prohibited.
+- **`_tokens.css`**: generated flat OKLCH custom properties for the single dark scheme (adr/0002) plus the shared `@theme inline` mapping. It is imported by both `main.css` and `login.css`; runtime token-based `color-mix()` and relative `oklch(from …)` are prohibited, and so is every gradient function (adr/0003).
 - **Official names**: every surface/foreground token uses the shadcn/ui name (`--background`, `--card`, `--popover`, `--accent`, `--muted`, `--primary`, `--primary-foreground`, `--border`, `--input`, `--ring`, `--radius`, `--sidebar-*`), so the official docs read 1:1 against this theme. LuCI-only surfaces keep their own names (`--terminal-*`, `--progress-bar-*`, `--label-surface`, `--panel-bg`, `--login-left-bg`). `--radius` is the single radius knob (0.625rem) with the official sm/md/lg/xl/2xl multipliers; `--radius-base` is an alias for it.
 - **`login.css`**: separate Vite build entry for the login page; it does **not** import `main.css`, but re-imports the generated `_tokens.css`.
 
+## Root font size
+
+`html` is **16px** and `body` is `0.875rem` (14px), in both `main.css` and `login.css`.
+
+The 16px root is load-bearing: every size in the shell is expressed in rem so the layout follows it. While the root was pinned to `text-sm` (14px) the whole chrome rendered 12.5% smaller than the admin layout it mirrors — a `w-64`/`16rem` sidebar measured 224px instead of 256px, the `h-16` header 49px instead of 64px — and no later rule could fix that without hard-coding px everywhere.
+
+Body copy is set separately at 14px, so text keeps this theme's density while the chrome around it matches the reference. When adding a rule, decide which of the two you mean:
+
+- **chrome size** (sidebar, header, cards, spacing) → rem, follows the 16px root;
+- **icon boxes** → px, because `1rem` no longer equals the old 14px and icon sizes must not drift with the root (see Icons below).
+
 ## Dark mode
 
-`@custom-variant dark` keyed on `[data-darkmode=true]`, set by an inline script in `header.ut` before paint (reads `localStorage['shadcn.theme']`) to avoid a flash of the wrong theme.
+There is no mode. `header.ut` sets `data-darkmode="true"` unconditionally before paint and `sidebar-shadcn.js` deletes the legacy `shadcn.theme` localStorage key instead of reading it, so a browser that once selected light lands on dark with no flash (adr/0002). `color-scheme` is `dark` and `theme-color` is the single `--background` value.
 
 ## Icons, two sources
 

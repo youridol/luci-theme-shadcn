@@ -45,7 +45,8 @@ html[data-sidebar-collapsed="true"] #sidebar {
 }
 
 .sidebar-header {
-  @apply flex h-14 shrink-0 items-center justify-between px-3;
+  /* 4rem = the reference SidebarHeader's h-16 at the 16px root. */
+  @apply flex h-16 shrink-0 items-center justify-between px-3;
 }
 
 .sidebar-brand {
@@ -77,10 +78,10 @@ html[data-sidebar-collapsed="true"] #sidebar {
 
 /* Row rhythm follows the reference shell. Measured on that screenshot the
    active row is 32px tall and row centres sit 36px apart, a pitch/row ratio of
-   1.125. Anchoring on the row (this theme's rows are 31.5px) puts the pitch at
-   35.4px, so the 4px of air between neighbours becomes mb-1 (3.5px at the 14px
-   root that `html`'s `text-sm` sets). Expressing the gap in rem — not fixed px
-   — keeps the ratio at any root size.
+   1.125. Since the root is 16px (see the Root font size section of
+   .dev/docs/css.md) this theme's rows are 32px too, so the 4px of air between
+   neighbours is exactly mb-1. Expressing the gap in rem — not fixed px — keeps
+   the ratio if the root ever changes again.
 
    The gap only ever applied *between* top-level rows, so an open section's
    highlight ran straight into the row below it: the parent's selected band
@@ -291,7 +292,10 @@ html[data-sidebar-anim] #sidebar {
 /* ── Card header ─────────────────────────────────────────────────── */
 
 .card-header {
-  @apply border-border bg-background flex h-12 shrink-0 items-center justify-between border-b px-4;
+  /* 4rem = 64px at the 16px root, matching the reference shell's header. It
+     was h-12 (48px) while the root was 14px, which read as 42px — the single
+     largest visual difference from the layout this theme is modelled on. */
+  @apply border-border bg-background flex h-16 shrink-0 items-center justify-between border-b px-4;
 }
 
 .card-header-left {
@@ -375,6 +379,20 @@ html[data-sidebar-anim] #sidebar {
 
 #maincontent {
   @apply flex-1 [scrollbar-gutter:stable] overflow-y-auto p-6 max-md:p-4;
+
+  /* The reference layout centres its page body in a max-w-7xl (80rem = 1280px)
+     column; without it a 2560px-wide window stretches every reading line and
+     every form field to the full width, which is what made wide screens look
+     unlike the reference more than any single size did.
+
+     Applied to the direct children rather than to #maincontent itself: the
+     scroll container has to stay full-width so its scrollbar sits at the
+     window edge, exactly as the reference keeps `main` scrollable full-bleed.
+     `mx-auto` needs a width, hence `w-full` + `max-w`. */
+  > * {
+    @apply mx-auto w-full;
+    max-width: 80rem;
+  }
 
   h1 {
     @apply mb-4 border-0 pl-0 text-2xl font-semibold tracking-tight;

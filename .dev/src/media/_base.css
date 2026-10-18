@@ -51,7 +51,18 @@
 }
 
 html {
-  @apply bg-background text-foreground font-sans text-sm;
+  /* Root font-size is 16px (the browser default), not `text-sm`.
+
+     Every size in this theme is expressed in rem so the layout scales with the
+     root. Pinning the root to `text-sm` made the whole shell 12.5% smaller than
+     the reference admin layout it is modelled on — a 16rem sidebar measured
+     224px instead of 256px, the 4rem header 49px instead of 64px — and no
+     later stage could correct that without hard-coding px everywhere.
+
+     Body copy is still 14px (set on `body` below), so text keeps the density
+     this theme had while the chrome around it returns to its reference size. */
+  font-size: 16px;
+  @apply bg-background text-foreground font-sans;
 
   body {
     /* flex-wrap: third parties append stray children to <body> (OpenClash
@@ -66,6 +77,10 @@ html {
        browsers (Chrome 111+ / Safari 15.4+ / Firefox 113+) that all ship
        dvh, so a fallback would only serve browsers the theme can't render
        colors on anyway. */
+    /* Body copy stays at the previous 14px while the root is 16px, so the
+       chrome can use the reference layout's rem sizes without making every
+       table cell and form label larger than this theme has always been. */
+    font-size: 0.875rem;
     @apply flex h-dvh flex-wrap;
 
     /* Scroll lock while a LuCI modal is open — ui.js toggles this class on

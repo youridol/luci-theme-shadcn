@@ -465,8 +465,20 @@ html.shadcn-drawer-lock body {
   align-items: start;
 }
 
+/* 看板接管后（data-dashboard="on"）这套两列网格就没有意义了：它的目标是
+   让「系统 / 网络」这些原生区块并排，而原生区块此时已被隐藏。留着它只会
+   把看板挤进 1.15fr 那一列，再靠 `.shadcn-dash` 的 `grid-column: 1/-1`
+   抵消回来 —— 看板宽度是「借着覆盖修正」得到的，而不是本来如此。
+
+   但逃生口打开时（data-show-native="true"）原生区块要回来，两列也就得跟着
+   回来，所以这条同时要求看板仍在台上。 */
+#view[data-dashboard="on"]:not(:has(> .shadcn-dash[data-show-native="true"])) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 @media (min-width: 1024px) {
-  #view {
+  #view:not([data-dashboard="on"]),
+  #view[data-dashboard="on"]:has(> .shadcn-dash[data-show-native="true"]) {
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   }
 
@@ -1430,10 +1442,48 @@ html.shadcn-drawer-lock body {
 
   .shadcn-dash-bar {
     padding: 6px 0;
+    gap: 8px;
+  }
+
+  /* 工具栏：间隔选择器独占一行，三个按钮分第二行。
+     原来每个按钮都是 flex: 1 1 auto，在 390px 屏上各占一整行 —— 磁贴之前
+     先堆了四行控件，第一屏基本被工具条吃掉。 */
+  .shadcn-dash-tools {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+
+  .shadcn-dash-interval {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+
+  .shadcn-dash-interval select {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .shadcn-dash-btn {
-    flex: 1 1 auto;
+    flex: initial;
+    min-width: 0;
+    padding: 0 6px;
+  }
+
+  /* 三个按钮 + 一个逃生口，4 个落在 3 列网格里会让最后一个孤零零占半行。
+     让逃生口跨满整行，读起来是「主要操作 / 例外出口」两层，而不是 3+1 的
+     参差。 */
+  .shadcn-dash-btn[data-role="native"] {
+    grid-column: 1 / -1;
+  }
+
+  /* 磁贴脚注一行要放三个事实（上行、下行、起始时间），窄磁贴里时间总被
+     省略号吃掉。改成允许换行两行，槽位已经预留了高度，不会顶动布局。 */
+  .shadcn-dash-tile-foot {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
   }
 }
 /* ── 一键诊断 ─────────────────────────────────────────────────────────

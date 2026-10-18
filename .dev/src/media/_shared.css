@@ -41,8 +41,10 @@ html {
 
   -webkit-mask: var(--shadcn-icon) center / contain no-repeat;
   mask: var(--shadcn-icon) center / contain no-repeat;
-  /* px, not rem: this theme's root font-size is 14px, so `1rem` would render a
-     16px icon at 14px. */
+  /* px, not rem: icon sizes are design values that must not drift with the
+     root font size (16px since the layout realignment, was 14px). A `1rem`
+     default would silently become 16px and no longer match the 14px/16px/20px
+     scale the icon set was drawn at. */
   width: var(--shadcn-icon-size, 16px);
   height: var(--shadcn-icon-size, 16px);
 }
@@ -58,8 +60,8 @@ html {
    public/, and duplicating them into src/assets to reach a data URI would buy
    one request at the cost of a second copy of the asset.
 
-   Sizes are px, not rem: this theme's root font-size is 14px, so `1rem` would
-   render a 16px icon at 14px.
+   Sizes are px, not rem: they are design values and must not follow the root
+   font size (see the comment on the base rule above).
 
    The password toggle swaps icons by rewriting its `--shadcn-icon`, since a
    mask image cannot be changed through `src` the way an <img> could. */
