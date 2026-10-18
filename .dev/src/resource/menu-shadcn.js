@@ -96,16 +96,20 @@ return baseclass.extend({
     return n === "logout" || n.endsWith("/logout");
   },
 
+  /**
+   * An icon box, not an <img>: the theme paints icons with `mask` + `bg-current`
+   * (.dev/docs/adr/0006-mask-icon-boxes.md), so the shape follows whatever
+   * `color` the surrounding row has. The URL stays outside the bundle because
+   * these names are chosen at runtime from ICON_MAP.
+   */
   _iconFile(name, size) {
     const media = this._mediaBase();
-    return E("img", {
-      src: `${media}/icons/${name}.svg`,
-      width: String(size),
-      height: String(size),
-      alt: "",
-      loading: "lazy",
+    const box = E("span", {
       class: "shadcn-icon",
+      "aria-hidden": "true",
+      style: `--shadcn-icon:url(${media}/icons/${name}.svg);--shadcn-icon-size:${size}px`,
     });
+    return box;
   },
 
   /**
@@ -331,7 +335,7 @@ return baseclass.extend({
     children.forEach((section) => {
       if (this._isLogoutMenuItem(section) && foot) {
         const isActive = dp[1] == section.name;
-        const iconEl = this._sectionIcon(section.name, 18);
+        const iconEl = this._sectionIcon(section.name, 16);
         foot.appendChild(
           E(
             "a",
@@ -359,7 +363,7 @@ return baseclass.extend({
 
       const subs = ui.menu.getChildren(section);
       const isActive = dp[1] == section.name;
-      const iconEl = this._sectionIcon(section.name, 18);
+      const iconEl = this._sectionIcon(section.name, 16);
 
       if (subs.length === 0) {
         nav.appendChild(
@@ -542,17 +546,6 @@ return baseclass.extend({
         );
       });
     });
-
-    // luci-base carries no mode msgids, so the labels borrow
-    // luci-app-aurora-config's already-translated "Light Mode"/"Dark Mode" —
-    // matching its msgids verbatim is what makes the palette follow the UI
-    // language wherever the config app is installed, and they fall back to
-    // English where it isn't.
-    this.palModes = [
-      { mode: "light", title: _("Light Mode"), iconFile: "sun" },
-      { mode: "dark", title: _("Dark Mode"), iconFile: "moon" },
-      { mode: "device", title: _("Automatic"), iconFile: "monitor" },
-    ];
 
     const isMac = /Mac|iP(ad|hone|od)/.test(navigator.platform);
     trigger.setAttribute("aria-keyshortcuts", isMac ? "Meta+K" : "Control+K");
@@ -783,12 +776,11 @@ return baseclass.extend({
     const trimmed = this.palInput.value.trimStart();
     const cmdOnly = trimmed.startsWith(">");
     const q = (cmdOnly ? trimmed.slice(1) : trimmed).trim().toLowerCase();
-    const themeNow = localStorage.getItem("shadcn.theme") || "device";
 
     let rows;
     if (q) {
       const hits = [];
-      // ">" scopes to command rows — the theme modes plus logout.
+      // ">" scopes to command rows — logout is the only one the theme owns.
       const pool = cmdOnly
         ? this.palIndex.filter((page) => page.isLogout)
         : this.palIndex;
@@ -811,35 +803,20 @@ return baseclass.extend({
             ),
           });
       });
-      this.palModes.forEach((cmd) => {
-        const m = this._palScore(q, cmd.title, `theme ${cmd.mode}`);
-        if (m)
-          hits.push({
-            score: m.score,
-            node: this._palModeRow(cmd, themeNow, m.ranges),
-          });
-      });
       hits.sort((a, b) => b.score - a.score);
       rows = hits.map((h) => h.node);
     } else {
       rows = [];
       if (!cmdOnly) {
-        // Everything above Design is navigation — a "Navigation" heading
-        // restated the obvious and was dropped with the per-row breadcrumb.
+        // Navigation only: the theme has one colour scheme, so the palette
+        // carries no mode commands and needs no "Design" group heading
+        // (.dev/docs/adr/0002-dark-only.md).
         this._palBrowsePages().forEach((page) =>
           rows.push(this._palPageRow(page, null)),
         );
       }
-      // role=presentation: a listbox owns options, and this heading is
-      // decoration — it just fences the theme commands off the page rows.
-      rows.push(
-        E("div", { class: "cmdk-group", role: "presentation" }, [_("Design")]),
-      );
-      this.palModes.forEach((cmd) =>
-        rows.push(this._palModeRow(cmd, themeNow, null)),
-      );
-      // Logout rides ">" only, last after the modes — a command, not a
-      // destination (mirrors luci-theme-aurora's palette).
+      // Logout rides ">" only — a command, not a destination (mirrors
+      // luci-theme-aurora's palette).
       if (cmdOnly) {
         const logout = this.palIndex.find((page) => page.isLogout);
         if (logout) rows.push(this._palPageRow(logout, null));
@@ -923,42 +900,6 @@ return baseclass.extend({
       // Remember the pick, then let the click navigate (router or full
       // load) untouched.
       row.addEventListener("click", () => this._palRecordRecent(page.path));
-    return row;
-  },
-
-  _palModeRow(cmd, themeNow, ranges) {
-    const active = themeNow === cmd.mode;
-    const row = E(
-      "button",
-      {
-        class: "cmdk-row cmdk-cmd",
-        type: "button",
-        role: "option",
-        "aria-selected": "false",
-        tabindex: "-1",
-        "data-mode": cmd.mode,
-      },
-      [
-        this._iconFile(cmd.iconFile, 15),
-        E("span", { class: "cmdk-title" }, this._palMark(cmd.title, ranges)),
-        active ? E("span", { class: "cmdk-check", "aria-hidden": "true" }) : "",
-      ],
-    );
-    row.addEventListener("click", () => {
-      window.ShadcnSidebar?.applyTheme?.(cmd.mode);
-      // Palette stays open: the ✓ moves and the skin flips live. The list
-      // is rebuilt, so re-select this command — the selection must not
-      // snap back to the first row after an Enter.
-      this._renderPalette();
-      // A mouse click focuses the button, which the rebuild above then
-      // discards, stranding focus on <body> outside the panel's tab cycle.
-      // Focus belongs in the field anyway — that is where Enter is read.
-      this.palInput.focus();
-      const again = this.palList.querySelector(
-        `.cmdk-row[data-mode="${cmd.mode}"]`,
-      );
-      if (again) this._palSelect(again);
-    });
     return row;
   },
 

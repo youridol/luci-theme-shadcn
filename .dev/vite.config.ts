@@ -11,7 +11,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import { luciRouter } from "@eamonxg/luci-theme-devkit/vite/router";
 import { luciDev, injectMockBar } from "@eamonxg/luci-theme-devkit/vite/dev";
-import { existsSync, readdirSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import { dirname, join, resolve } from "path";
 import { transform as lightningcssTransform } from "lightningcss";
@@ -31,6 +31,45 @@ const PATCH_ALIASES: Record<string, string[]> = config.patchAliases ?? {};
 const tag = (name: string): string =>
   `${new Date().toLocaleTimeString("en-US")} [${name}]`;
 
+/* One-level `//#include ./file.js` inlining for the on-demand patches.
+
+   Patches are copied through terser rather than bundled (Rollup never sees
+   them), so a patch cannot `import` anything. Without this, a shared fragment
+   like `patches/_charts.js` could only be duplicated into every patch that
+   wants it. The directive is deliberately tiny and explicit:
+
+     //#include ./_charts.js
+
+   resolves relative to the including file's directory, is replaced in place,
+   and is a build error if the target is missing — a silent miss would ship a
+   patch that throws on load. Only one level is expanded, which is enough for
+   the fragments this theme has; a nested include stays literal on purpose so
+   the mechanism cannot grow into a second bundler by accident. */
+function inlineIncludes(
+  srcDir: string,
+  relPath: string,
+  source: string,
+): string {
+  const DIR = resolve(srcDir, relPath, "..");
+  return source.replace(
+    /^[ \t]*\/\/#include[ \t]+(\S+)[ \t]*$/gm,
+    (whole: string, target: string) => {
+      const abs = resolve(DIR, target);
+      if (!abs.startsWith(srcDir)) {
+        console.error(`${tag("Inline")} ${relPath}: ${target} escapes src/`);
+        process.exitCode = 1;
+        return whole;
+      }
+      if (!existsSync(abs)) {
+        console.error(`${tag("Inline")} ${relPath}: ${target} not found`);
+        process.exitCode = 1;
+        return whole;
+      }
+      return readFileSync(abs, "utf-8");
+    },
+  );
+}
+
 function createLuciJsCompressPlugin(): Plugin {
   let outDir: string;
 
@@ -42,14 +81,24 @@ function createLuciJsCompressPlugin(): Plugin {
     },
     async generateBundle() {
       const srcDir = resolve(CURRENT_DIR, "src/resource");
-      const jsFiles = (await readdir(srcDir, { recursive: true })).filter((f) =>
-        f.endsWith(".js"),
+      const jsFiles = (await readdir(srcDir, { recursive: true })).filter(
+        (f) =>
+          f.endsWith(".js") &&
+          // `_`-prefixed files in patches/ are shared fragments pulled in by an
+          // entry, not payloads of their own — the same rule the CSS entries
+          // follow above. Shipping one would put a never-requested file in
+          // shadcn/patches/.
+          !/^patches[\\/]_/.test(f),
       );
       await Promise.all(
         jsFiles.map(async (relPath) => {
           const normalized = relPath.replace(/\\/g, "/");
           try {
-            const sourceCode = await readFile(join(srcDir, relPath), "utf-8");
+            const sourceCode = inlineIncludes(
+              srcDir,
+              normalized,
+              await readFile(join(srcDir, relPath), "utf-8"),
+            );
             const compressed = await terserMinify(sourceCode, {
               parse: { bare_returns: true },
               compress: { directives: false, passes: 2 },

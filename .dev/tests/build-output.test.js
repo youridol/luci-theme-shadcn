@@ -44,6 +44,25 @@ test("pruned login.css keeps every consumed variable resolvable", () => {
 // card/popover/accent/sidebar-* surfaces (main +~3 KB) and tw-animate-css
 // brings the official enter/exit keyframes. The budget stays an assertion, not
 // a licence to grow — raise it again only with a measured reason.
+//
+// Re-based 2026-10 after the dark-only + inline-icon work (adr/0002, adr/0006).
+// That work REMOVED bytes, so these limits were lowered to keep the assertion
+// tight around the new reality rather than leaving 15 KB of silent headroom:
+//
+//   measured          limit
+//   main.css  130937  134000   (was 145000; the light token set and its
+//                              alpha ladder are gone)
+//   login.css  11465   12000   (was  20000)
+//   menu       15989   16500   (was  17500; icon boxes carry a CSS custom
+//                              property instead of an <img src>)
+//   sidebar     5225    5500   (was   6500)
+//   admin total 216178 222000  (was 232500)
+//   login total  59983  62000  (was  69000)
+//
+// router stays at 16000: it is 15771, so that is the one budget still doing
+// real work. Patches are deliberately NOT budgeted here — they are on-demand
+// payloads that a given page never loads twice, and .dev/docs/dashboard.md
+// tracks their measured sizes instead.
 test("production assets stay within raw-transfer budgets", () => {
   const main = bytes("shadcn/main.css");
   const login = bytes("shadcn/login.css");
@@ -53,17 +72,17 @@ test("production assets stay within raw-transfer budgets", () => {
   const font = bytes("shadcn/inter-latin-wght-normal.woff2");
   const logo = bytes("shadcn/images/logo.svg");
 
-  assert.ok(main <= 145_000, `main.css ${main} B exceeds 145 KB`);
-  assert.ok(login <= 20_000, `login.css ${login} B exceeds 20 KB`);
-  // 17.5K: palette tabs (third-level nodes, redirect-parent folding, legacy
-  // recents mapping, parent-aware scoring, per-segment path words) added
-  // ~1.2 KB; the admin total below moved by the same amount.
-  assert.ok(menu <= 17_500, `menu-shadcn.js ${menu} B exceeds 17.5 KB`);
+  assert.ok(main <= 134_000, `main.css ${main} B exceeds 134 KB`);
+  assert.ok(login <= 12_000, `login.css ${login} B exceeds 12 KB`);
+  // 16.5K: palette tabs (third-level nodes, redirect-parent folding, legacy
+  // recents mapping, parent-aware scoring, per-segment path words) plus the
+  // mask-based icon boxes.
+  assert.ok(menu <= 16_500, `menu-shadcn.js ${menu} B exceeds 16.5 KB`);
   assert.ok(router <= 16_000, `router-shadcn.js ${router} B exceeds 16 KB`);
-  assert.ok(sidebar <= 6_500, `sidebar-shadcn.js ${sidebar} B exceeds 6.5 KB`);
+  assert.ok(sidebar <= 5_500, `sidebar-shadcn.js ${sidebar} B exceeds 5.5 KB`);
   assert.ok(
-    main + menu + router + sidebar + font <= 232_500,
-    "admin assets exceed 232.5 KB",
+    main + menu + router + sidebar + font <= 222_000,
+    "admin assets exceed 222 KB",
   );
-  assert.ok(login + font + logo <= 69_000, "login assets exceed 69 KB");
+  assert.ok(login + font + logo <= 62_000, "login assets exceed 62 KB");
 });

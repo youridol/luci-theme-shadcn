@@ -24,10 +24,14 @@ wired in yet. Details: [.dev/docs/build.md](.dev/docs/build.md#continuous-ipk-bu
 ## Budgets & dependencies
 
 `.dev/tests/build-output.test.js` asserts raw-transfer budgets because uhttpd serves identity
-bytes: `main.css ≤ 145 KB`, `login.css ≤ 20 KB`, plus per-file and aggregate caps for the JS
-resources and the Inter subset. These were raised for the shadcn realignment (v0.7.0) when the
-official token set and `tw-animate-css` were added — the assertion is a guard against unnoticed
-growth, so raise it again only with a measured reason recorded in the commit.
+bytes: `main.css ≤ 134 KB`, `login.css ≤ 12 KB`, `menu-shadcn.js ≤ 16.5 KB`,
+`sidebar-shadcn.js ≤ 5.5 KB`, `router-shadcn.js ≤ 16 KB`, plus aggregate caps for the admin
+bundle (222 KB) and the login page (62 KB). These were raised for the shadcn realignment
+(v0.7.0), then **lowered** after the dark-only + mask-icon work (adr/0002, adr/0006) removed a
+whole colour scheme's worth of bytes — the assertion is a guard against unnoticed growth, so
+adjust it only with a measured reason recorded in the commit. Patches are deliberately not
+budgeted: they are on-demand payloads whose sizes are tracked in
+[.dev/docs/dashboard.md](.dev/docs/dashboard.md).
 
 `tw-animate-css` is the only added runtime dependency of the realignment. It ships its utilities
 with `@utility`, which `@apply` cannot reference — see the Motion section of

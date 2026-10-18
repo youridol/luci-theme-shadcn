@@ -23,7 +23,7 @@
     }
 
     &.cbi-tab > a {
-      @apply bg-background text-foreground border-input bg-input-a30 shadow-sm border;
+      @apply bg-background text-foreground border-input bg-input-a30 border shadow-sm;
     }
   }
 }

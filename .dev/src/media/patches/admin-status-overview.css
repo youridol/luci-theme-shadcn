@@ -1,12 +1,18 @@
-/* Shadcn online-host drawer — styles for the Overview page patch.
+/* Shadcn Overview page — the dashboard board and the online-host drawer.
 
    Plain CSS by design (see .dev/docs/patches.md): patches omit the `@apply`
    boilerplate and reach the theme's values through the :root custom
-   properties, so every colour, radius and shadow below follows the active
-   light/dark token set instead of hardcoding a value.
+   properties, so every colour, radius and shadow below comes from the token
+   set rather than a hardcoded value. The theme ships a single (dark) scheme
+   (.dev/docs/adr/0002-dark-only.md), so there is no mode pair to write.
 
-   The drawer is a right-hand slide-over: it never pushes the page, so it can
-   sit above the sidebar without changing the shell layout. */
+   Two surfaces live here:
+   - the dashboard board (`.shadcn-dash-*`), which replaces the native
+     sections and is styled from .dev/docs/dashboard.md;
+   - the right-hand slide-over drawer for a single host's connections.
+
+   No gradients anywhere (.dev/docs/adr/0003-no-gradients.md): depth comes
+   from the token lightness ladder, 1px borders and shadows only. */
 
 /* ── trigger inside the 在线主机 table ───────────────────────────────── */
 
@@ -66,7 +72,7 @@
   inset: 0;
   background: var(--overlay-base-a50);
   opacity: 0;
-  transition: opacity 0.2s var(--ease-out);
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .shadcn-drawer-root.is-open .shadcn-drawer-mask {
@@ -85,7 +91,7 @@
   border-left: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   transform: translateX(100%);
-  transition: transform 0.24s var(--ease-out);
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .shadcn-drawer-root.is-open .shadcn-drawer {
@@ -445,7 +451,7 @@ html.shadcn-drawer-lock body {
   height: 100%;
   background: var(--primary);
   border-radius: inherit;
-  transition: width 0.4s var(--ease-out);
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ── 区块网格 ───────────────────────────────────────────────────────── */
@@ -620,4 +626,938 @@ html.shadcn-drawer-lock body {
   #view .cbi-section > div > table.table td.td:first-child {
     white-space: normal;
   }
+}
+
+/* ══ 概览看板 ═══════════════════════════════════════════════════════════
+
+   看板挂在 #view 的第一个子节点上，原生区块留在 DOM 里由
+   [data-dashboard="on"] 隐藏。这个属性只在补丁确实插上看板之后才设置，
+   所以脚本没跑（或被拦）时页面就是原生概览 —— 这不是降级策略，是
+   adr/0001 的核心约束。
+
+   前缀统一 shadcn-dash-；旧的 .shadcn-metrics 磁贴带由概况带取代。 */
+
+/* ── 接管：隐藏原生区块，保留逃生口 ─────────────────────────────────── */
+
+#view[data-dashboard="on"] > .cbi-section {
+  display: none;
+}
+
+/* 逃生口打开时反过来：藏看板，显示原生区块。用属性而不是 JS 改 style，
+   这样「显示原生」不依赖任何脚本状态。 */
+#view[data-dashboard="on"] > .shadcn-dash[data-show-native="true"] {
+  display: none;
+}
+
+#view[data-dashboard="on"]
+  > .shadcn-dash[data-show-native="true"]
+  ~ .cbi-section {
+  display: revert;
+}
+
+/* ── 骨架 ───────────────────────────────────────────────────────────── */
+
+.shadcn-dash {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* ── 顶部状态条 ─────────────────────────────────────────────────────── */
+
+.shadcn-dash-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+
+.shadcn-dash-status {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-dash-status[data-tone="ok"] {
+  color: var(--success);
+}
+
+.shadcn-dash-status[data-tone="warning"] {
+  color: var(--warning);
+}
+
+.shadcn-dash-status[data-tone="danger"] {
+  color: var(--destructive);
+}
+
+.shadcn-dash-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.shadcn-dash-interval {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.shadcn-dash-interval select {
+  height: 26px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.shadcn-dash-btn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 0.75rem;
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.shadcn-dash-btn:hover {
+  background: var(--accent);
+}
+
+.shadcn-dash-btn[aria-pressed="true"] {
+  border-color: var(--ring-a50);
+}
+
+.shadcn-dash-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* ── 异常横幅 ───────────────────────────────────────────────────────── */
+
+.shadcn-dash-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shadcn-dash-alert {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.shadcn-dash-alert[data-tone="info"] {
+  border-left-color: var(--info);
+}
+
+.shadcn-dash-alert[data-tone="warning"] {
+  border-left-color: var(--warning);
+}
+
+.shadcn-dash-alert[data-tone="danger"] {
+  border-left-color: var(--destructive);
+}
+
+.shadcn-dash-alert-title {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.shadcn-dash-alert-detail {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 概况带 ─────────────────────────────────────────────────────────── */
+
+.shadcn-dash-band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 12px;
+}
+
+/* 磁贴高度固定：数据到达前后不变，否则整条概况带会把下面所有区块推一次
+   （实测一次 0.038 的布局偏移）。min-height 按最终形态留足。 */
+.shadcn-dash-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 8.5rem;
+  padding: 12px 14px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.shadcn-dash-tile:hover {
+  border-color: var(--ring-a50);
+}
+
+.shadcn-dash-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.shadcn-dash-tile-valuerow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.shadcn-dash-tile-value {
+  overflow: hidden;
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadcn-dash-tile-unit {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+/* 图形槽位固定占位，所以「有图形 / 没图形」两种状态磁贴等高。 */
+.shadcn-dash-tile-slot {
+  display: block;
+  height: 34px;
+  margin-top: 2px;
+}
+
+/* Whatever the slot holds must fit the slot — a gauge that keeps its own
+   aspect ratio would otherwise overflow into the tile's footer text. */
+.shadcn-dash-tile-slot > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.shadcn-dash-tile-foot {
+  overflow: hidden;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 分区 ───────────────────────────────────────────────────────────── */
+
+.shadcn-dash-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scroll-margin-top: 48px;
+}
+
+.shadcn-dash-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.shadcn-dash-section-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.shadcn-dash-section-sub {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.shadcn-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.shadcn-dash-span-2 {
+  grid-column: span 2;
+}
+
+/* ── 卡片 ───────────────────────────────────────────────────────────── */
+
+.shadcn-dash-card {
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.shadcn-dash-card-title {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  letter-spacing: 0.01em;
+}
+
+.shadcn-dash-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shadcn-dash-empty {
+  margin: 0;
+  padding: 6px 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.shadcn-dash-muted {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-dash-metric-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-dash-metric-row strong {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* ── 图表配色 ───────────────────────────────────────────────────────
+   所有图形都从这里取色：SVG 里没有写死的颜色，也没有渐变。 */
+
+.shadcn-dash-chart {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+/* A chart with `preserveAspectRatio` (rings, gauges, the isometric bars) has
+   no intrinsic height of its own: with only `width: 100%` it grows to a
+   square of the container's width. On the device that turned the temperature
+   gauge into a 179px square inside a 34px slot, covering the tile's own text,
+   and the hourly bars into a 260px block. Every chart that is not explicitly
+   sized by its slot gets a bounded height here. */
+.shadcn-dash-spark {
+  height: 34px;
+}
+
+.shadcn-dash-card-body > .shadcn-dash-chart {
+  max-height: 120px;
+}
+
+/* The isometric hour bars need the extra height (24 slots + the sheared top
+   face), but still bounded, or one bar fills the whole card. */
+[data-card="hours"] .shadcn-dash-card-body > .shadcn-dash-chart {
+  max-height: 96px;
+}
+
+.shadcn-dash-ring-wrap .shadcn-dash-chart {
+  height: auto;
+  max-height: 96px;
+}
+
+.dash-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.dash-line-up {
+  fill: none;
+  stroke: var(--info);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.dash-area {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.14;
+}
+
+.dash-area-up {
+  fill: var(--info);
+  stroke: none;
+  opacity: 0.14;
+}
+
+.dash-bar {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.85;
+}
+
+.dash-bar-empty {
+  fill: var(--muted-foreground);
+  stroke: none;
+  opacity: 0.25;
+}
+
+/* 等距柱的三个面：同色、三个明度阶。不用渐变（adr/0003），也不靠阴影
+   伪造深度（adr/0007）。 */
+.dash-iso-front {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.55;
+}
+
+.dash-iso-side {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.38;
+}
+
+.dash-iso-top {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.78;
+}
+
+.dash-gauge-track {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.dash-gauge-value {
+  fill: none;
+  stroke: var(--warning);
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.dash-ring-seg {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.8;
+}
+
+.dash-ring-used {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.85;
+}
+
+.dash-ring-free {
+  fill: var(--muted);
+  stroke: none;
+}
+
+.dash-ring-s0 {
+  fill: var(--primary);
+  opacity: 0.85;
+}
+.dash-ring-s1 {
+  fill: var(--info);
+  opacity: 0.85;
+}
+.dash-ring-s2 {
+  fill: var(--success);
+  opacity: 0.85;
+}
+.dash-ring-s3 {
+  fill: var(--warning);
+  opacity: 0.85;
+}
+.dash-ring-s4 {
+  fill: var(--destructive);
+  opacity: 0.85;
+}
+
+.dash-rank-track {
+  fill: var(--muted);
+  stroke: none;
+}
+
+.dash-rank-bar {
+  fill: var(--primary);
+  stroke: none;
+  opacity: 0.75;
+}
+
+.dash-heat-cell {
+  fill: var(--muted);
+  stroke: none;
+}
+
+.dash-s0 {
+  opacity: 0.25;
+}
+.dash-s1 {
+  opacity: 0.4;
+}
+.dash-s2 {
+  opacity: 0.55;
+}
+.dash-s3 {
+  opacity: 0.7;
+}
+.dash-s4 {
+  opacity: 0.9;
+}
+
+/* ── 线路 ───────────────────────────────────────────────────────────── */
+
+.shadcn-dash-lines {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.shadcn-dash-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.shadcn-dash-line-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shadcn-dash-line-name {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadcn-dash-chip {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 0.625rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.shadcn-dash-chip[data-tone="ok"] {
+  color: var(--success);
+  border-color: var(--success-a30);
+}
+
+.shadcn-dash-chip[data-tone="muted"] {
+  color: var(--muted-foreground);
+}
+
+.shadcn-dash-line-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 每核细条 ───────────────────────────────────────────────────────── */
+
+/* 4 核铺满整行时每根条宽 150px、高度又是百分比 —— 0.7% 只有 1px，读起来
+   像四个空盒子。把总宽收住、给填充一个最小高度，「空闲」才和「没数据」
+   分得开。 */
+.shadcn-dash-cores {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  width: 100%;
+  max-width: 180px;
+  height: 40px;
+  margin-top: 6px;
+}
+
+.shadcn-dash-core {
+  display: flex;
+  flex: 1 1 0;
+  align-items: flex-end;
+  height: 100%;
+  min-width: 0;
+  max-width: 28px;
+  background: var(--muted);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.shadcn-dash-core-bar {
+  display: block;
+  width: 100%;
+  min-height: 3px;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── 环形与图例 ─────────────────────────────────────────────────────── */
+
+.shadcn-dash-ring-wrap {
+  width: 96px;
+  max-width: 50%;
+}
+
+.shadcn-dash-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+}
+
+.shadcn-dash-legend-down::before,
+.shadcn-dash-legend-up::before {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  content: "";
+  border-radius: 2px;
+}
+
+.shadcn-dash-legend-down::before {
+  background: var(--primary);
+}
+
+.shadcn-dash-legend-up::before {
+  background: var(--info);
+}
+
+/* ── 端口列表 ───────────────────────────────────────────────────────── */
+
+.shadcn-dash-portlist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shadcn-dash-portrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-dash-portname {
+  overflow: hidden;
+  color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 小时轴 ─────────────────────────────────────────────────────────── */
+
+.shadcn-dash-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+  margin-top: 2px;
+  font-size: 0.5625rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 排行 ───────────────────────────────────────────────────────────── */
+
+.shadcn-dash-rankrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+}
+
+.shadcn-dash-rankhost {
+  overflow: hidden;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-align: left;
+  color: var(--foreground);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadcn-dash-rankhost:hover {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.shadcn-dash-rankhost:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.shadcn-dash-ranksize {
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-dash-ranktrack {
+  grid-column: 1 / -1;
+  height: 4px;
+}
+
+.shadcn-dash-ranktrack .shadcn-dash-chart {
+  height: 4px;
+}
+
+/* ── 协议图例 ───────────────────────────────────────────────────────── */
+
+.shadcn-dash-protolegend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shadcn-dash-protorow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-dash-protoname {
+  color: var(--foreground);
+}
+
+/* ── 响应式 ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 1279px) {
+  .shadcn-dash-span-2 {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 767px) {
+  /* 手机上真正要的是「现在通不通、哪里出问题」，所以只留概况带与异常横幅
+     常驻，资源与流量两组折叠起来。 */
+  .shadcn-dash {
+    gap: 12px;
+  }
+
+  .shadcn-dash-band {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+  }
+
+  .shadcn-dash-tile {
+    min-height: 7.5rem;
+    padding: 10px 12px;
+  }
+
+  .shadcn-dash-tile-value {
+    font-size: 1.125rem;
+  }
+
+  .shadcn-dash-tile-slot {
+    height: 28px;
+  }
+
+  .shadcn-dash-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shadcn-dash-section:not(#shadcn-dash-net) {
+    order: 10;
+  }
+
+  .shadcn-dash-bar {
+    padding: 6px 0;
+  }
+
+  .shadcn-dash-btn {
+    flex: 1 1 auto;
+  }
+}
+/* ── 一键诊断 ─────────────────────────────────────────────────────────
+   与异常横幅分开：横幅说的是「现在不健康」，这里是「刚跑了一次检查」。
+   两者视觉上必须有区别，否则用户分不清哪个会随刷新变化。 */
+
+.shadcn-dash-btn-primary {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.shadcn-dash-btn-primary:hover {
+  background: var(--primary);
+  opacity: 0.9;
+}
+
+.shadcn-dash-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.shadcn-dash-diagnose {
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.shadcn-dash-diagnose-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shadcn-dash-diagnose-verdict {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.shadcn-dash-diagnose-verdict[data-tone="ok"] {
+  color: var(--success);
+}
+
+.shadcn-dash-diagnose-verdict[data-tone="danger"] {
+  color: var(--destructive);
+}
+
+.shadcn-dash-diagnose-meta {
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-dash-diagnose-close {
+  margin-left: auto;
+  padding: 0;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.shadcn-dash-diagnose-close:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+.shadcn-dash-diagnose-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 6px 16px;
+  padding-top: 8px;
+}
+
+.shadcn-dash-diagnose-item {
+  display: grid;
+  grid-template-columns: 8px auto minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: baseline;
+  font-size: 0.75rem;
+}
+
+/* 圆点用纯色表示通过 / 注意 / 未通过，不靠颜色单独承载信息 ——
+   旁边始终有文字，色盲用户也能读。 */
+.shadcn-dash-diagnose-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  align-self: center;
+}
+
+.shadcn-dash-diagnose-item[data-tone="ok"] .shadcn-dash-diagnose-dot {
+  background: var(--success);
+}
+
+.shadcn-dash-diagnose-item[data-tone="warning"] .shadcn-dash-diagnose-dot {
+  background: var(--warning);
+}
+
+.shadcn-dash-diagnose-item[data-tone="danger"] .shadcn-dash-diagnose-dot {
+  background: var(--destructive);
+}
+
+.shadcn-dash-diagnose-label {
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.shadcn-dash-diagnose-detail {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadcn-dash-diagnose-note {
+  margin: 8px 0 0;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
 }

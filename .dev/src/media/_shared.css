@@ -14,7 +14,7 @@ html {
 }
 
 /* ── Icons ───────────────────────────────────────────────────────────────
-   One mechanism for the whole theme (.dev/docs/adr/0006-inline-svg-icons.md).
+   One mechanism for the whole theme (.dev/docs/adr/0006-mask-icon-boxes.md).
    An icon is an empty box painted with `mask` + `bg-current`, so its colour
    comes from the surrounding `color`, i.e. from the token that colour resolved
    to. Nothing uses `filter`, which is what makes hover, `prefers-contrast` and
@@ -49,7 +49,7 @@ html {
 
 /* Static template chrome: the mobile hamburger (header.ut). */
 .topbar-hamburger .shadcn-icon {
-  @apply [--shadcn-icon:url('@assets/icons/menu.svg')] [--shadcn-icon-size:20px];
+  @apply [--shadcn-icon-size:20px] [--shadcn-icon:url('@assets/icons/menu.svg')];
 }
 
 /* Login page fields (sysauth.ut). `--shadcn-icon` is set inline by the
