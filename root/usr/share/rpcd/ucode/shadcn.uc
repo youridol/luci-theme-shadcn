@@ -25,7 +25,10 @@
 
 import { readfile, popen } from 'fs';
 // ucode 没有全局 Math，取整必须从 math 模块拿。
-import { round } from 'math';import { parseConntrack, appFor, connKey } from 'shadcn.conntrack';
+import { round } from 'math';
+// 阈值可选配置：/etc/config/shadcn-dashboard 不存在时全用默认值。
+import { cursor } from 'uci';
+import { parseConntrack, appFor, connKey } from 'shadcn.conntrack';
 import { caps as probeCaps, fastSample, cpuUsage, cpuUsagePer } from 'shadcn.probe';
 import { readAndSummarize, compact } from 'shadcn.aggregate';
 
@@ -301,6 +304,179 @@ function slowSummary() {
 		uncounted: summary.uncounted,
 		total: summary.total,
 	};
+}
+
+// ── 阈值 ──────────────────────────────────────────────────────────────
+//
+// 默认值在这里，被 /etc/config/shadcn-dashboard 的同名 option 逐项覆盖。
+// 判定留在后端而不是前端：后端才握有原始数值（conntrack 的 count/max、
+// 内存的字节数），前端只拿到四舍五入后的百分比，用取整后的数去比阈值会
+// 在边界上错判。
+//
+// 配置文件是可选的：不存在时 get() 返回 null，一律落回默认值，不报错。
+const ALERT_DEFAULTS = {
+	// conntrack 占用百分比，两档。
+	conntrack_warn: 80,
+	conntrack_crit: 95,
+	// 内存已用百分比。
+	mem_used: 90,
+	// 摄氏温度，两档。
+	temp_warn: 80,
+	temp_crit: 90,
+	// 无字节计数连接占比（硬件转发），超过则提示速率不可测。
+	uncounted_share: 50,
+};
+
+// 读一项阈值。非数字或缺失都落回默认值 —— 一个打错字的配置项不该让
+// 整个告警系统失效，也不该把阈值变成 0 而满屏报警。
+//
+// 不能用 isNaN：ucode 没有它（`isNaN('5')` 抛 "left-hand side is not a
+// function"）。而这里的 try/catch 会把这个错误吞掉并回退默认值，于是
+// 「配置写了但永远不生效」且毫无提示 —— 真机上就是这样静默失效的。
+// 改用 `n == n`：NaN 是唯一不等于自身的值。
+function alertConfig(name) {
+	const fallback = ALERT_DEFAULTS[name];
+
+	try {
+		const c = cursor();
+		const raw = c.get('shadcn-dashboard', 'alert', name);
+
+		if (raw == null)
+			return fallback;
+
+		const n = +raw;
+
+		if (n != n)          // NaN：配置项写的不是数字
+			return fallback;
+
+		if (n < 0)           // 负数阈值没有意义
+			return fallback;
+
+		return n;
+	}
+	catch (e) {
+		return fallback;
+	}
+}
+
+// 当前生效的全部阈值 + 每项的来源，让前端能显示「默认」还是「已覆盖」。
+function alertConfigAll() {
+	const out = {};
+
+	for (let name in ALERT_DEFAULTS) {
+		const value = alertConfig(name);
+		out[name] = {
+			value: value,
+			// 只有真的读到配置且与默认不同才标 custom，否则看不出哪项被改过。
+			source: value == ALERT_DEFAULTS[name] ? 'default' : 'config',
+		};
+	}
+
+	return out;
+}
+
+// 保留一位小数的百分比。
+//
+// `round(x)` 返回 int，`int / 10` 又走整数除法向零截断 —— 0.55% 会显示成
+// 「0%」。第二个参数 true 让它返回 double，除法才保留小数。
+function pct1(v) {
+	return round(v * 10, true) / 10;
+}
+
+// 把一次采样变成「持续状态」列表。只输出真的成立的条件，空数组表示健康。
+//
+// 每条带 `limit`：前端据此显示「80%」这个数字，不必自己再存一份阈值。
+// cpus 从 caps 传进来：它在 probe.uc 的 caps() 里，不在 fast 采样里。
+function buildAlerts(fast, slow, thresholds, cpus) {
+	const out = [];
+	const t = thresholds ?? {};
+
+	const thr = function(name) {
+		const item = t[name];
+
+		return (item != null && item.value != null) ? item.value : ALERT_DEFAULTS[name];
+	};
+
+	const ct = fast?.conntrack;
+
+	if (ct != null && ct.available && ct.percent != null) {
+		const warn = thr('conntrack_warn');
+		const crit = thr('conntrack_crit');
+
+		if (ct.percent > warn)
+			push(out, {
+				key: 'conntrack',
+				tone: ct.percent > crit ? 'danger' : 'warning',
+				title: '连接表接近上限',
+				detail: `${ct.count} / ${ct.max}（${pct1(ct.percent)}%）`,
+				limit: `${warn}%`,
+			});
+	}
+
+	if (fast?.mem != null) {
+		const limit = thr('mem_used');
+
+		if (fast.mem.percent > limit)
+			push(out, {
+				key: 'mem',
+				tone: 'warning',
+				title: '可用内存不足',
+				detail: `已用 ${pct1(fast.mem.percent)}%`,
+				limit: `${limit}%`,
+			});
+	}
+
+	if (fast?.temp != null && fast.temp.available) {
+		const warn = thr('temp_warn');
+		const crit = thr('temp_crit');
+
+		if (fast.temp.max > warn)
+			push(out, {
+				key: 'temp',
+				tone: fast.temp.max > crit ? 'danger' : 'warning',
+				title: '温度偏高',
+				detail: `${round(fast.temp.max)} °C`,
+				limit: `${warn} °C`,
+			});
+	}
+
+	// 负载按「1 分钟负载 > 核数」判，核数来自 caps（见 probe.uc 的注释）。
+	if (fast?.load != null && cpus != null && cpus > 0 && fast.load.one > cpus)
+		push(out, {
+			key: 'load',
+			tone: 'warning',
+			title: '负载超过核数',
+			detail: `1 分钟负载 ${fast.load.one} · ${cpus} 核`,
+			limit: `${cpus} 核`,
+		});
+
+	const conns = slow?.conns;
+
+	if (conns != null && conns.available && conns.total > 0) {
+		const limit = thr('uncounted_share');
+		const share = (conns.uncounted / (conns.total + 0.0)) * 100;
+
+		// 不是故障：硬件转发的连接本来就不带字节计数。说一次，免得把
+		// 某一行的「— B/s」当成 bug。
+		if (share > limit)
+			push(out, {
+				key: 'uncounted',
+				tone: 'info',
+				title: '多数连接由硬件转发',
+				detail: `${conns.uncounted} / ${conns.total} 条无字节计数，速率不可测`,
+				limit: `${limit}%`,
+			});
+	}
+
+	// 严重度排序：danger → warning → info。前端据此顺序渲染，不必再排。
+	const rank = { danger: 0, warning: 1, info: 2 };
+
+	return sort(out, function(a, b) {
+		const ra = rank[a.tone] ?? 9;
+		const rb = rank[b.tone] ?? 9;
+
+		return ra - rb;
+	});
 }
 
 // ── 一键诊断 ──────────────────────────────────────────────────────────
@@ -717,6 +893,17 @@ const methods = {
 					conns: slowSummary(),
 				};
 			}
+
+			// 阈值判定放这里统一做，并把当前生效的阈值一起回传：
+			// 前端要能显示「这条用的是 80% 还是配置里的 92%」，否则用户
+			// 改了配置看不出生效没有。
+			//
+			// 必须写成一行且不留尾随逗号：ucode 的解析器在两处都不接受，
+			// 而报错位置指向 `);` 那行，看起来像别的问题。
+			out.thresholds = alertConfigAll();
+			const cpus = (out.caps != null) ? out.caps.cpus : null;
+
+			out.alerts = buildAlerts(out.fast, out.slow, out.thresholds, cpus);
 
 			return out;
 		}

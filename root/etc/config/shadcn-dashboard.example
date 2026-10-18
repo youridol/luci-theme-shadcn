@@ -1,0 +1,38 @@
+# Thresholds for the Overview dashboard's anomaly banner.
+#
+# This is an EXAMPLE, not a live config: the `.example` suffix means the package
+# never places it in /etc/config, so it cannot overwrite a file you already
+# edited. To use it:
+#
+#     cp /etc/config/shadcn-dashboard.example /etc/config/shadcn-dashboard
+#
+# Without that file every value falls back to its built-in default, and the
+# values written here ARE those defaults — so copying it changes nothing until
+# you edit a number. The board's alert rows show the limit each one is judged
+# against, so you can confirm an edit took effect.
+#
+# Judgement happens in the backend (root/usr/share/rpcd/ucode/shadcn.uc,
+# `buildAlerts`), not in the browser: the backend is what holds the raw
+# numerator and denominator, and comparing a percentage that has already been
+# rounded would misjudge the boundary.
+#
+# A value that is not a number, or is negative, is ignored and the default is
+# used. A typo must not turn a threshold into 0 and flash alarms everywhere.
+
+config alert 'alert'
+	# Connection-table occupancy, percent of nf_conntrack_max.
+	# Above `conntrack_warn` shows a warning; above `conntrack_crit` shows danger.
+	option conntrack_warn '80'
+	option conntrack_crit '95'
+
+	# Memory in use, percent.
+	option mem_used '90'
+
+	# Temperature in degrees Celsius. Warning, then danger.
+	option temp_warn '80'
+	option temp_crit '90'
+
+	# Share of connections with no byte counters (hardware-offloaded), percent.
+	# Above this the board notes that per-host rates cannot be measured. This is
+	# informational, not a fault.
+	option uncounted_share '50'

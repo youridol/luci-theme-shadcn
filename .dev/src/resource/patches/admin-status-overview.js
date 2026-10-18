@@ -1094,7 +1094,7 @@
     status.dataset.tone = "ok";
   }
 
-  function dashRenderAlerts(list) {
+  function dashRenderAlerts(list, thresholds) {
     const box = dashBoard.querySelector('[data-role="alerts"]');
     if (!box) return;
     box.textContent = "";
@@ -1103,13 +1103,41 @@
       return;
     }
     box.hidden = false;
+
+    // 有任何一项被 /etc/config/shadcn-dashboard 覆盖时，在横幅尾部标一句，
+    // 否则用户改了配置却只能靠猜是否生效。
+    const overridden = thresholds
+      ? Object.keys(thresholds).filter(function (k) {
+          return thresholds[k] && thresholds[k].source === "config";
+        })
+      : [];
+
     for (const a of list) {
       const row = dashEl("div", "shadcn-dash-alert");
       row.dataset.tone = a.tone || "warning";
       row.appendChild(dashEl("span", "shadcn-dash-alert-title", a.title));
       if (a.detail)
         row.appendChild(dashEl("span", "shadcn-dash-alert-detail", a.detail));
+      // 判定线本身也显示：同一条「温度偏高」在 80 °C 与 70 °C 下含义不同。
+      if (a.limit) {
+        const lim = dashEl(
+          "span",
+          "shadcn-dash-alert-limit",
+          "阈值 " + a.limit,
+        );
+        lim.dataset.key = a.key || "";
+        row.appendChild(lim);
+      }
       box.appendChild(row);
+    }
+
+    if (overridden.length) {
+      const note = dashEl(
+        "div",
+        "shadcn-dash-alert-config",
+        "阈值来自 /etc/config/shadcn-dashboard：" + overridden.join("、"),
+      );
+      box.appendChild(note);
     }
   }
 
@@ -1246,63 +1274,6 @@
   }
 
   let dashDiagnoseRpc = null;
-
-  // 阈值取默认值；UCI 覆盖是后续步骤。
-  function dashAlerts(fast, slow) {
-    const out = [];
-
-    const ct = fast && fast.conntrack;
-    if (ct && ct.available && ct.percent != null && ct.percent > 80)
-      out.push({
-        tone: ct.percent > 95 ? "danger" : "warning",
-        title: "连接表接近上限",
-        detail: ct.count + " / " + ct.max + "（" + dashPct(ct.percent) + "）",
-      });
-
-    const mem = fast && fast.mem;
-    if (mem && mem.percent > 90)
-      out.push({
-        tone: "warning",
-        title: "可用内存不足",
-        detail:
-          "已用 " +
-          dashPct(mem.percent) +
-          " · 剩余 " +
-          dashBytes(mem.available),
-      });
-
-    const temp = fast && fast.temp;
-    if (temp && temp.available && temp.max > 80)
-      out.push({
-        tone: temp.max > 90 ? "danger" : "warning",
-        title: "温度偏高",
-        detail: Math.round(temp.max) + " °C",
-      });
-
-    const load = fast && fast.load;
-    if (load && dashCaps && dashCaps.cpus > 0 && load.one > dashCaps.cpus)
-      out.push({
-        tone: "warning",
-        title: "负载超过核数",
-        detail: "1 分钟负载 " + load.one + " · " + dashCaps.cpus + " 核",
-      });
-
-    const conns = slow && slow.conns;
-    if (conns && conns.available && conns.total > 0) {
-      const share = conns.uncounted / conns.total;
-      // 不是故障：硬件转发的连接本来就不带字节计数。说一次，免得把
-      // 某一行的「— B/s」当成 bug。
-      if (share > 0.5)
-        out.push({
-          tone: "info",
-          title: "多数连接由硬件转发",
-          detail:
-            conns.uncounted + " / " + conns.total + " 条无字节计数，速率不可测",
-        });
-    }
-
-    return out;
-  }
 
   function dashRenderOverview(fast, slow) {
     // WAN 磁贴：用该网口的实时速率判断「有流量」，不谎称链路状态 ——
@@ -1867,7 +1838,9 @@
       dashRenderLines(fast);
       dashRenderResources(fast);
       dashRenderFlow(fast, dashSlow);
-      dashRenderAlerts(dashAlerts(fast, dashSlow));
+      // 告警由后端判定并一起回传（它握有原始数值与 UCI 阈值）；前端只渲染。
+      // 后端没给（老版本）时退回空列表，不清空也不假装健康。
+      if (data.alerts) dashRenderAlerts(data.alerts, data.thresholds);
       dashRenderStatus();
     } catch (e) {
       dashLastError = String(e && e.message ? e.message : e);
@@ -1884,7 +1857,9 @@
       dashSlow = data.slow || null;
       dashRenderOverview(null, dashSlow);
       dashRenderFlow(null, dashSlow);
-      dashRenderAlerts(dashAlerts(null, dashSlow));
+      // 这里刻意不渲染告警：慢路径只带 slow 数据，后端此刻拿不到 fast 的
+      // 内存/温度，会把这些告警判成「已消失」而让横幅闪掉。告警由快路径
+      // 统一负责，它的每一轮都同时拥有两侧数据（dashSlow 已缓存）。
     } catch (e) {
       // 慢路径失败不能让看板变空：快路径继续跑，排行卡保留上一帧。
       if (!dashSlow)

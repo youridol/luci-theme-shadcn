@@ -68,7 +68,17 @@
 | 丢包率             | > 5%                                  | 未实现 —— 需要延迟探测，见下 |
 | DNS 解析           | > 500 ms                              | 未实现 —— 同上               |
 
-阈值目前写在补丁 JS 的 `dashAlerts()` 里。`/etc/config/shadcn-dashboard` 逐项覆盖与 tooltip 显示当前生效阈值**尚未实现**。
+阈值可用 `/etc/config/shadcn-dashboard` 逐项覆盖，**判定在后端**（`shadcn.uc` 的 `buildAlerts`），因为后端才握有原始数值；前端拿到的是已经四舍五入的百分比，用它去比阈值会在边界上错判。每条告警都带 `limit`，横幅里直接显示「阈值 0.1%」这类字，有覆盖时再补一句「阈值来自 /etc/config/shadcn-dashboard：…」，所以改完配置能确认生效。
+
+配置是**可选**的：文件不存在时全部落回默认值。仓库里给的是 `root/etc/config/shadcn-dashboard.example`（`.example` 后缀，安装时不会覆盖你已改过的配置），用法：
+
+```sh
+cp /etc/config/shadcn-dashboard.example /etc/config/shadcn-dashboard
+```
+
+非数字或负数的项会被忽略并回退默认值 —— 一个打错字不该把阈值变成 0 而满屏报警。**这里不能用 `isNaN`**：ucode 没有它（`isNaN('5')` 抛 "left-hand side is not a function"），而读取处的 `try/catch` 会把这个错误吞掉并回退默认值，表现为「配置写了但永远不生效」且毫无提示 —— 真机上就是这样静默失效的。改用 `n != n` 判 NaN。
+
+真机验证：写 `conntrack_warn=0.1` 后横幅立刻出现 `danger · 连接表接近上限 · 843 / 131072（0.6%）· 阈值 0.1%`；删掉文件后阈值回到 `80/95`、`source: default`。
 
 **丢包率与延迟为什么还没做**：它们不是读一个文件就能得到的量，需要周期性发探测包（ICMP 或 UDP）并统计。这与「快路径只读常量级文件」的纪律冲突 —— 探测本身会产生网络流量，且需要一个额外的守护进程或后台定时器。设计意图是把它放进「诊断」这条**按需**路径而不是常驻采集，所以它属于下面「一键诊断」的一部分，不在告警阈值里。
 
@@ -211,7 +221,7 @@ CSS 前缀统一 `shadcn-dash-`。旧的 `.shadcn-metrics` / `.shadcn-metric` �
 
 ### 本轮未做的事（照实记录）
 
-- **UCI 阈值覆盖**：`/etc/config/shadcn-dashboard` 与 tooltip 未实现，阈值目前是 `dashAlerts()` 里的常量。
+- **阈值没有 LuCI 配置页**：`/etc/config/shadcn-dashboard` 只能手工编辑，没有表单界面。示例文件与 UCI 读取都已就位，缺的只是一个设置页。
 - **丢包率 / DNS 延迟进常驻告警**：这两项依赖主动探测，已按要求并入「一键诊断」而非常驻采集，所以不会出现在异常横幅里。
 - **移动端断点**：768 / 390 宽度的折叠行为只写了 CSS，未在真机或浏览器模拟下验证。
 - **`#view` 的两列网格**：看板靠 `grid-column: 1/-1` 跨列，功能正确，但原生区块的网格规则与看板共存，属冗余可清理。
@@ -236,3 +246,6 @@ CSS 前缀统一 `shadcn-dash-`。旧的 `.shadcn-metrics` / `.shadcn-metric` �
 - **ucode 正则不支持 `[\s\S]` 这类组合**：`match(text, /A:([\s\S]*)/)` 会静默匹配失败，于是「DNS 永远未通过」。要截取一段就 `split(text, 'A:')[1]`。
 - **`_` 前缀的补丁片段不会进产物**：`_charts.js` 靠 `//#include ./_charts.js` 在构建期内联，目标缺失时构建直接失败（否则会发出一个一加载就抛错的补丁）。
 - **补丁注册键必须等于文件名 stem**：路由按 `window.luciPatches[stem]` 查找，键写错的话 `unmount()` 永远不被调用，监听器会越过页面存活。
+- **ucode 没有 `isNaN`**：`isNaN('5')` 抛 "left-hand side is not a function"。若外面包着 `try/catch`，错误被吞掉并回退默认值，表现是「配置永远不生效」且没有任何提示。判 NaN 用 `n != n`。
+- **`round(x)` 返回 int**：`round(0.55 * 10) / 10` 得 0（int/int 又走整数除法）。要小数必须 `round(x, true)`。这已经是整数除法在本项目里第四次咬人（CPU 使用率、conntrack/mem/storage 百分比、这里）。
+- **ucode 不接受多行函数调用的尾随逗号**：`f(\n a,\n b,\n )` 报 `Expecting expression`，报错位置指向 `);`，看起来像别的问题。写成一行。

@@ -1561,3 +1561,22 @@ html.shadcn-drawer-lock body {
   font-size: 0.6875rem;
   color: var(--muted-foreground);
 }
+
+/* 判定线本身也显示出来：同一条「温度偏高」在 80 °C 与 70 °C 下含义不同，
+   用户改过 /etc/config/shadcn-dashboard 之后需要能确认生效。 */
+.shadcn-dash-alert-limit {
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 有配置覆盖时的一句脚注。不是告警，所以不占一条 alert 的样式。 */
+.shadcn-dash-alert-config {
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+}
