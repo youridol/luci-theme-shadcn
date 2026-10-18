@@ -305,156 +305,6 @@ html.shadcn-drawer-lock body {
    全部颜色取自 token；主题只有一套深色配色（adr/0002），所以不需要为明暗
    各写一遍。 */
 
-/* ── 指标带 ─────────────────────────────────────────────────────────── */
-
-/* 指标带本身是 `#view` 网格的一个直接子项：占满整行，内部再分列。少了这
-   条它会被当成一格塞进两列网格里，四个磁贴挤成 2×2，后面的区块也跟着错
-   位。 */
-#view > .shadcn-metrics,
-.shadcn-metrics {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
-  margin-bottom: 0;
-}
-
-.shadcn-metric {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  /* 高度在填充数据前后保持一致。磁贴先以“标题 + 占位”出现，几百毫秒后才有
-     折线与真实数值；如果高度随内容长出来，整条指标带会在数据到达时把下面的
-     所有区块往下推一次（实测一次 0.038 的布局偏移）。这里按最终形态留足：
-     标题行 + 数值行 + 折线区 + 说明行。 */
-  min-height: 8.25rem;
-  padding: 14px 16px 12px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
-}
-
-.shadcn-metric:hover {
-  border-color: var(--ring-a50);
-}
-
-.shadcn-metric-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--muted-foreground);
-}
-
-.shadcn-metric-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-}
-
-.shadcn-metric-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
-.shadcn-metric-value {
-  overflow: hidden;
-  font-size: 1.5rem;
-  font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  color: var(--foreground);
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.shadcn-metric-unit {
-  margin-left: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--muted-foreground);
-}
-
-.shadcn-metric-foot {
-  font-size: 0.6875rem;
-  line-height: 1.35;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 折线图：拉伸的 inline SVG。preserveAspectRatio=none 让路径填满盒子（样本
-   数变化时不用重新算坐标），vector-effect 让描边恒为 1px，不随盒子缩放。 */
-.shadcn-spark {
-  display: block;
-  width: 100%;
-  height: 34px;
-  margin-top: 2px;
-  overflow: visible;
-}
-
-/* 图形槽位：首帧磁贴只有标题与占位，几百毫秒后才长出折线/进度条。槽位固定
-   占住 34px，图形的有无不再改变磁贴高度，也就不会在数据到达时把下面所有
-   区块推下去一次。 */
-.shadcn-metric-slot {
-  display: block;
-  height: 34px;
-  margin-top: 2px;
-}
-
-.shadcn-metric-slot > .shadcn-spark {
-  height: 100%;
-  margin-top: 0;
-}
-
-/* 内存磁贴用条而不是折线：条比槽位矮，按槽位居中，视觉上与其他磁贴对齐。 */
-.shadcn-metric-slot > .shadcn-meter {
-  margin-top: 14px;
-}
-
-.shadcn-spark path.shadcn-spark-line {
-  fill: none;
-  stroke: var(--primary);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.shadcn-spark path.shadcn-spark-area {
-  fill: var(--primary);
-  stroke: none;
-  opacity: 0.12;
-}
-
-/* 取值本身就是「占总量的比例」（内存）时用进度条，而不是随时间变化的折线。 */
-.shadcn-meter {
-  overflow: hidden;
-  height: 6px;
-  margin-top: 8px;
-  background: var(--primary-a20);
-  border-radius: 999px;
-}
-
-.shadcn-meter > span {
-  display: block;
-  height: 100%;
-  background: var(--primary);
-  border-radius: inherit;
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
 /* ── 区块网格 ───────────────────────────────────────────────────────── */
 
 /* `#view` 是 LuCI 渲染所有区块的容器。网格只作用在它上面，其它页面不受
@@ -621,21 +471,9 @@ html.shadcn-drawer-lock body {
 
 /* ── 窄屏 ───────────────────────────────────────────────────────────── */
 
-/* 低于网格断点时指标带仍然可用，但字号要降下来，否则「运行时间」会溢出。 */
+/* 原生表格的第一列（标签）在窄屏允许换行，否则长标签会把整行撑出横向滚动。
+   看板接管时这些区块是隐藏的，但逃生口打开后它们又会出现。 */
 @media (max-width: 639px) {
-  .shadcn-metrics {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 8px;
-  }
-
-  .shadcn-metric {
-    padding: 10px 12px;
-  }
-
-  .shadcn-metric-value {
-    font-size: 1.125rem;
-  }
-
   #view .cbi-section > div > table.table td.td:first-child {
     white-space: normal;
   }
@@ -648,7 +486,9 @@ html.shadcn-drawer-lock body {
    所以脚本没跑（或被拦）时页面就是原生概览 —— 这不是降级策略，是
    adr/0001 的核心约束。
 
-   前缀统一 shadcn-dash-；旧的 .shadcn-metrics 磁贴带由概况带取代。 */
+   前缀统一 shadcn-dash-。早先那套从原生表格抓数的 `.shadcn-metrics` 磁贴带
+   已整体删除：它和概况带显示同一批数字（运行时间、负载、内存、WAN 速率），
+   而看板接管后它被挤到页面最底部，成了第二份互相矛盾的数据。 */
 
 /* ── 接管：隐藏原生区块，保留逃生口 ─────────────────────────────────── */
 
@@ -983,6 +823,25 @@ html.shadcn-drawer-lock body {
   font-size: 1.05rem;
   font-weight: 600;
   color: var(--foreground);
+}
+
+/* 系统信息卡里的值可能很长：CPU 型号实测 345px（"Intel(R) Celeron(R) CPU
+   N2930 @ 1.83GHz"），在 389px 的卡片里会折成两行，把「处理器」推到边缘、
+   看着像溢出卡片。这一卡是元信息，值被截断比换行更好读，所以单行省略；
+   完整的型号在系统页和 hover 的 title 里都还能看到。
+
+   只作用于系统信息卡，不碰通用的 .shadcn-dash-metric-row —— 那条被内存、
+   负载等多处复用，改它会让数值换行。 */
+[data-card="sys"] .shadcn-dash-metric-row strong {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 标签不换行也不收缩：否则值一长，「处理器」三个字会被挤成两列。 */
+[data-card="sys"] .shadcn-dash-metric-row span {
+  flex-shrink: 0;
 }
 
 /* ── 图表配色 ───────────────────────────────────────────────────────

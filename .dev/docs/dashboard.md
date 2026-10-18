@@ -177,7 +177,20 @@ shadcn.dashboard { sections: String }
 - **图标内联 + `currentColor`**（`adr/0006`）。删除 `_shared.css` 的 `filter` 反色。
 - **等距投影只用一处**（`adr/0007`）：今日流量的小时柱。线路卡没上 3D —— 那里需要精确读数，立体化妨碍比较。层次深度（token 明度阶 + 边框 + 投影）用在卡片与磁贴上。等距三面必须是实际绘制的三个面，不靠阴影伪造。
 
-CSS 前缀统一 `shadcn-dash-`。旧的 `.shadcn-metrics` / `.shadcn-metric` 与它们的磁贴带退役，由新看板的概况带取代。
+CSS 前缀统一 `shadcn-dash-`。
+
+旧的 `.shadcn-metrics` / `.shadcn-metric` 磁贴带（从原生表格抓数，显示运行时间 / 负载 / 内存 / WAN 速率）已**整体删除**，连同它专用的 14 个函数（`buildMetrics`、`updateMetrics`、`ensureMetrics`、`watchView`、`sampleTick`、`startSampling`/`stopSampling`、`sectionTable`、`readPairs`、`parseProgress`、`parseBytes`、`portTotals`、`push`、`sparkPath`、`svgNode`、`tile`、`slotOf`、`setValue`/`setFoot`/`setSpark`/`setMeter`）以及 CSS。
+
+删除的理由是它和新看板显示**同一批数字**，而看板接管后原生区块被隐藏，这套磁贴被挤到页面最底部，成了第二份、且会与顶部概况带互相矛盾的数据：
+
+| 旧磁贴   | 看板现在的对应处             |
+| -------- | ---------------------------- |
+| 运行时间 | 「内存与存储」卡的运行时长行 |
+| 系统负载 | 「CPU」卡的负载行            |
+| 内存占用 | 「内存与存储」卡             |
+| WAN 流量 | 「实时速率」磁贴             |
+
+删除后补丁 JS 从 39 954 B 降到 33 189 B、CSS 从 20 700 B 降到 19 278 B，`pnpm test` 31 项全过。
 
 ## 布局与移动端
 
