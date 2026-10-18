@@ -69,6 +69,7 @@ test("production assets stay within raw-transfer budgets", () => {
   const menu = bytes("resources/menu-shadcn.js");
   const router = bytes("resources/router-shadcn.js");
   const sidebar = bytes("resources/sidebar-shadcn.js");
+  const tableSort = bytes("resources/table-sort.js");
   const font = bytes("shadcn/inter-latin-wght-normal.woff2");
   const logo = bytes("shadcn/images/logo.svg");
 
@@ -80,9 +81,14 @@ test("production assets stay within raw-transfer budgets", () => {
   assert.ok(menu <= 16_500, `menu-shadcn.js ${menu} B exceeds 16.5 KB`);
   assert.ok(router <= 16_000, `router-shadcn.js ${router} B exceeds 16 KB`);
   assert.ok(sidebar <= 5_500, `sidebar-shadcn.js ${sidebar} B exceeds 5.5 KB`);
+  // table-sort.js is ~4.2 KB: value parser (capacity / duration / IPv4 /
+  // status words), the row walk and the sort menu. It only covers tables LuCI's
+  // own UIDataTable sorting does not reach, so it should stay small — if this
+  // grows past 6 KB something is being reimplemented that LuCI already does.
+  assert.ok(tableSort <= 6_000, `table-sort.js ${tableSort} B exceeds 6 KB`);
   assert.ok(
-    main + menu + router + sidebar + font <= 222_000,
-    "admin assets exceed 222 KB",
+    main + menu + router + sidebar + tableSort + font <= 226_000,
+    "admin assets exceed 226 KB",
   );
   assert.ok(login + font + logo <= 62_000, "login assets exceed 62 KB");
 });

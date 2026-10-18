@@ -176,3 +176,39 @@ table.table,
 .cbi-section-table .cbi-section-table-titles .cbi-section-table-cell {
   @apply !w-auto;
 }
+
+/* ── 排序 ────────────────────────────────────────────────────────────────
+   表头点击排序由 LuCI 的 ui.js 负责（data-sortable-row / data-sort-direction
+   / handleSort），箭头也由那边的 content 生成，本主题只补一点点视觉：
+   可点的表头给个手型与 hover 底色。
+
+   下面 .shadcn-sort-menu 那一组是给「LuCI 没接管排序」的表用的 —— 那种表
+   没有可点的表头，只有一个排序菜单（见 src/resource/table-sort.js）。 */
+
+table.table th[data-sortable-row="true"],
+.table .th[data-sortable-row="true"] {
+  @apply hover:bg-accent cursor-pointer select-none [transition:background-color_.15s];
+}
+
+/* 排序菜单：与主题里其它弹出层同一套颜色，不改配色只改结构。 */
+.shadcn-sort-menu {
+  @apply relative mb-2 flex justify-end;
+}
+
+.shadcn-sort-menu-btn {
+  @apply border-border bg-card text-foreground hover:bg-muted focus-visible:ring-ring inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium [transition:background-color_.15s] focus-visible:ring-2 focus-visible:outline-none;
+}
+
+.shadcn-sort-menu-list {
+  /* 用 bg-popover + text-foreground：主题里没有 popover-foreground 这个
+     工具类（tokens 只有 --popover 底色），写它会直接让构建失败。 */
+  @apply border-border bg-popover text-foreground absolute top-full right-0 z-30 mt-1 max-h-64 min-w-40 overflow-y-auto rounded-md border p-1 shadow-lg;
+
+  &[hidden] {
+    @apply hidden;
+  }
+}
+
+.shadcn-sort-menu-item {
+  @apply text-foreground hover:bg-muted focus-visible:bg-muted block w-full rounded-sm px-2 py-1.5 text-left text-xs whitespace-nowrap focus-visible:outline-none;
+}
