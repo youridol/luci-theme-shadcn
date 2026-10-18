@@ -591,6 +591,9 @@
     diagnoseOut.hidden = true;
     root.appendChild(diagnoseOut);
 
+    // 概况带（六个磁贴）先构造，但**在「资源与运行」之后**才挂进 DOM：
+    // 磁贴是页面状态的摘要，先看资源组的明细、再对照摘要更顺；这也是
+    // 明确要求的顺序。
     const band = dashEl("div", "shadcn-dash-band");
     band.appendChild(dashTile("wan", "WAN 状态", "network"));
     band.appendChild(dashTile("hosts", "在线终端", "user"));
@@ -598,10 +601,8 @@
     band.appendChild(dashTile("today", "今日总流量", "chart-bar"));
     band.appendChild(dashTile("rate", "实时速率", "gauge"));
     band.appendChild(dashTile("temp", "系统温度", "activity"));
-    root.appendChild(band);
 
-    // 「资源与运行」放在线路之前：CPU、内存、存储、系统是打开页面最先要看的
-    // 一组状态，线路状态排在其后。概况带（磁贴）仍在最上面。
+    // 顺序：资源与运行 → 概况带 → 线路 → 流量。
     const res = dashSection("res", "资源与运行", "CPU · 内存 · 存储 · 系统");
     const cpu = dashCard("CPU", "cpu");
     res.body.appendChild(cpu.card);
@@ -612,6 +613,8 @@
     const sys = dashCard("系统信息", "sys");
     res.body.appendChild(sys.card);
     root.appendChild(res.wrap);
+
+    root.appendChild(band);
 
     const net = dashSection("net", "线路", "延迟 · 丢包 · 地址");
     const lines = dashCard("每条线路", "lines", true);
