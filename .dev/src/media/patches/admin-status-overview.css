@@ -774,6 +774,18 @@ html.shadcn-drawer-lock body {
   grid-column: span 2;
 }
 
+/* 流量区：四张卡排成 2×2，铺满整行。
+
+   原来只有前两张带 span-2（端口流量、按小时），后两张是单列 —— 在 1280 宽
+   的四列网格里，第一行正好占满 4 列，第二行只占 2 列，右侧空出半行（实测
+   空 622px）。那张截图里的「右侧一大片空白」就是这个。
+
+   四张都占 2 列之后两行都满。窄于 1280 时下面的响应式规则会把 span-2 统一
+   降成 1 列，所以这里不需要再写断点。 */
+#shadcn-dash-flow .shadcn-dash-card {
+  grid-column: span 2;
+}
+
 /* ── 卡片 ───────────────────────────────────────────────────────────── */
 
 .shadcn-dash-card {
@@ -1312,6 +1324,14 @@ html.shadcn-drawer-lock body {
 
 @media (max-width: 1279px) {
   .shadcn-dash-span-2 {
+    grid-column: span 1;
+  }
+
+  /* 流量区四卡在宽屏各占 2 列（见上方 #shadcn-dash-flow 那条）。窄屏必须
+     一起解除，否则 span 2 会在单列/双列网格里造出一条 0px 的隐式列 ——
+     实测 grid-template-columns 变成 "346px 0px"，卡片虽仍按行排列，但那
+     条空列是纯多余的结构。 */
+  #shadcn-dash-flow .shadcn-dash-card {
     grid-column: span 1;
   }
 }
