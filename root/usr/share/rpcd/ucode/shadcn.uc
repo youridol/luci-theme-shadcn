@@ -1,25 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// luci-theme-shadcn 的 rpcd 对象：为“在线主机”详情页提供逐条连接明细。
+// luci-theme-shadcn 的 rpcd 对象：为“在线主机”详情页提供逐条连接明细，
+// 并为概览看板提供 fast / slow 两条数据通道。
 //
 // 独立于 luci-app-trafficctl —— 那个包只给每主机汇总，没有逐条连接，
-// 而本主题需要的是「某台主机的实时连接」。这里只读内核连接表，
-// 不改任何配置，也不依赖 trafficctl 的内部结构。
+// 而本主题需要的是「某台主机的实时连接」与「一眼能诊断的看板」。这里只读
+// 内核数据，不改任何配置，也不依赖 trafficctl 的内部结构。
 //
 // 对外方法：
 //   connections { ip, limit? }  该主机的连接明细，含应用指纹与本次速率
 //   resolve     { ips }        批量把地址反查成域名（只查本地已知的）
+//   dashboard   { sections? }  看板数据（见 .dev/docs/dashboard.md）
+//
+// dashboard 的成本差两个数量级（真机实测，x86_64 / LEDE 24.10.5，约 1000
+// 条连接）：
+//   fast ≈  13 ms  只读 /proc 与 /sys 的常量级文件
+//   slow ≈ 740 ms  解析整张连接表并聚合
+// 所以前端按 1 s 拉 fast、按 60 s 拉 slow。把 slow 放进快周期就是灾难 ——
+// 这正是 .dev/docs/adr/0005 里快慢分离的理由。
 //
 // 速率靠两次采样的字节差算，所以按地址缓存上一轮的采样。
 
 'use strict';
 
 import { readfile, popen } from 'fs';
-import { parseConntrack, appFor, connKey } from 'shadcn.conntrack';
+// ucode 没有全局 Math，取整必须从 math 模块拿。
+import { round } from 'math';import { parseConntrack, appFor, connKey } from 'shadcn.conntrack';
+import { caps as probeCaps, fastSample, cpuUsage, cpuUsagePer } from 'shadcn.probe';
+import { readAndSummarize, compact } from 'shadcn.aggregate';
+
+// 回看文件由 sampler.uc 写入（procd 托管），见 adr/0005。
+const HISTORY_PATH = '/tmp/shadcn-dashboard/history.json';
 
 // rpcd 在独立进程里持有本对象，这份缓存随进程存活；连接消失后下一轮
 // 调用会顺手覆盖，因此不会随连接数无限增长。
 const lastSample = {};
+
+// 快路径的上一轮采样，用于算 CPU 使用率与网口速率。
+// 1 s 一次的调用间隔足够短，所以只留最近一份。
+let lastFast = null;
 
 // 一次最多返回多少条连接。连接表可达数百条，全量吐给前端没有意义。
 const DEFAULT_LIMIT = 300;
@@ -177,6 +196,341 @@ function reverseLookup(ip) {
 	}
 }
 
+// 由两次 fastSample 的网口累计字节差求每个接口的收发速率（B/s）。
+//
+// 增量算不出来时（计数器回落 = 网口重连、dt <= 0）该接口置 null，而不是
+// 把负数或 0 当成真实速率。
+function netRates(prev, cur, dt) {
+	if (prev == null || cur == null)
+		return null;
+
+	if (!(dt > 0))
+		return null;
+
+	const out = {};
+
+	for (let name in cur) {
+		const before = prev[name];
+
+		out[name] = {
+			rx: (before != null && cur[name].rx >= before.rx)
+				? (cur[name].rx - before.rx) / dt
+				: null,
+			tx: (before != null && cur[name].tx >= before.tx)
+				? (cur[name].tx - before.tx) / dt
+				: null,
+		};
+	}
+
+	return out;
+}
+
+// 读采样器写下的回看。
+//
+// 没装采样器、或刚重启过（tmpfs 清空）时返回 available:false 并说明原因；
+// 前端据此显示「无历史 / 回看自 <时间> 起」，不把空数组画成一条平线。
+function loadHistory() {
+	const raw = readfile(HISTORY_PATH);
+
+	if (raw == null)
+		return {
+			available: false,
+			reason: '回看为空（采样器未运行或刚重启过）',
+			points: [],
+			started: null,
+		};
+
+	let parsed = null;
+
+	try {
+		parsed = json(raw);
+	}
+	catch (e) {
+		return {
+			available: false,
+			reason: '回看文件损坏',
+			points: [],
+			started: null,
+		};
+	}
+
+	if (type(parsed) != 'object' || type(parsed.points) != 'array')
+		return {
+			available: false,
+			reason: '回看文件格式不符',
+			points: [],
+			started: null,
+		};
+
+	return {
+		available: true,
+		started: parsed.started ?? null,
+		step: parsed.step ?? null,
+		points: parsed.points,
+	};
+}
+
+// 慢路径：解析整张连接表并汇总。这条路径约 740 ms，只能慢周期调用。
+//
+// 解析失败时返回 available:false —— 让前端区分「读失败」和「没有连接」，
+// 不把错误伪装成空结果。
+function slowSummary() {
+	let text = null;
+
+	try {
+		text = readfile('/proc/net/nf_conntrack');
+	}
+	catch (e) {
+		return { available: false, error: `${e}` };
+	}
+
+	if (text == null)
+		return { available: false, error: '无法读取连接表' };
+
+	const summary = readAndSummarize(text, { limit: 10 });
+
+	return {
+		available: true,
+		// compact() 只留图表要用的 key 与字节数，排行榜不把明细塞进 60 秒
+		// 一次的响应体
+		compact: compact(summary),
+		// 状态分布给「异常横幅」用：offloaded / uncounted 能解释为什么
+		// 某些连接测不出速率
+		states: summary.states,
+		offloaded: summary.offloaded,
+		uncounted: summary.uncounted,
+		total: summary.total,
+	};
+}
+
+// ── 一键诊断 ──────────────────────────────────────────────────────────
+//
+// 与「异常」的区别：异常是持续状态，随数据自动出现消失；诊断是一次性检查，
+// 由用户点击触发，跑完即结束。它的价值在于把「现在到底哪一段断了」变成
+// 逐项结论，而不是让人对着数字猜。
+//
+// 三条约束：
+//   · 总时限：任何一项都不能拖住整个请求。ping 用 -c 1 -W 2，DNS 用 nslookup
+//     的默认超时，整体目标 ≤ 3 s；
+//   · 失败要如实说失败。这台设备上 192.168.3.1 就 ping 不通，把它写成
+//     「通过」等于骗人；
+//   · 不猜地址。网关从默认路由读，公网探针用固定 IP（不依赖 DNS 是否正常），
+//     DNS 检查才用域名。
+
+// 默认网关的 IP。从 /proc/net/route 读，比解析 ip route 的输出更稳。
+function defaultGateway() {
+	const text = readfile('/proc/net/route');
+
+	if (text == null)
+		return null;
+
+	// 每行：Iface Destination Gateway Flags RefCnt Use Metric Mask ...
+	// 目标为 00000000 的那行就是默认路由，网关是十六进制、小端序。
+	for (let line in split(text, '\n')) {
+		const f = split(trim(replace(line, /[ \t]+/g, ' ')), ' ');
+
+		if (length(f) < 3 || f[1] != '00000000')
+			continue;
+
+		const hex = f[2];
+
+		if (hex == null || length(hex) != 8)
+			continue;
+
+		const a = int(hex, 16);
+		// 小端序：最低字节是第一个八位组
+		const b0 = a & 0xff;
+		const b1 = (a >> 8) & 0xff;
+		const b2 = (a >> 16) & 0xff;
+		const b3 = (a >> 24) & 0xff;
+
+		if (a == 0)
+			continue;
+
+		return `${b0}.${b1}.${b2}.${b3}`;
+	}
+
+	return null;
+}
+
+// 跑一条命令并读回全部输出。失败时把原因带回去，而不是静默 null ——
+// 诊断这个功能的意义就是把失败说清楚，吞掉错误等于自相矛盾。
+function runCommand(cmd) {
+	try {
+		const proc = popen(cmd, 'r');
+
+		if (proc == null)
+			return { ok: false, error: '无法启动命令' };
+
+		const text = proc.read('all') ?? '';
+		proc.close();
+
+		return { ok: true, text: text };
+	}
+	catch (e) {
+		return { ok: false, error: `${e}` };
+	}
+}
+
+// ping 一个地址，返回 { ok, loss, rtt }。rtt 单位 ms，取不到时为 null。
+//
+// 只发 1 个包：诊断的总预算 ≤ 3 s，而丢包时每个包要等满 -W 的秒数。
+// 3 个包在 100% 丢包的线路上就是 6 s（实测 6016 ms），直接超预算。
+// 单包判定不损失信息 —— 我们要回答的是「通不通」，不是统计质量。
+function pingHost(ip) {
+	if (ip == null)
+		return { ok: false, error: '没有可探测的地址' };
+
+	const run = runCommand(`ping -c 1 -W 2 ${ip} 2>&1`);
+
+	if (!run.ok)
+		return { ok: false, error: run.error };
+
+	const text = run.text;
+	const lossM = match(text, /([0-9]+)% packet loss/);
+	const rttM = match(text, /round-trip[^=]*=[ \t]*([0-9.]+)\/([0-9.]+)\/([0-9.]+)/);
+
+	const loss = lossM != null ? +lossM[1] : null;
+
+	return {
+		ok: loss != null && loss < 100,
+		loss: loss,
+		rtt: rttM != null ? +rttM[2] : null,
+	};
+}
+
+// 解析一个域名，返回 { ok, ms, addrs }。
+//
+// 用 nslookup 而不是自己发 DNS 包：设备上一定有它（dnsmasq 自带的工具集），
+// 而手写 DNS 报文会把一个诊断按钮变成协议实现。
+function resolveHost(name) {
+	if (name == null)
+		return { ok: false, error: '没有可解析的域名' };
+
+	const started = monotonic();
+	const run = runCommand(`nslookup ${name} 2>&1`);
+	const ms = (monotonic() - started) * 1000;
+
+	if (!run.ok)
+		return { ok: false, error: run.error, ms: ms };
+
+	const text = run.text;
+
+	// busybox 的输出分两段，前一段是本机用的 DNS 服务器：
+	//
+	//   Server:         202.103.225.68
+	//   Address:        202.103.225.68:53     ← 这是服务器，不是答案
+	//
+	//   Non-authoritative answer:
+	//   Name:   www.a.shifen.com
+	//   Address: 183.2.172.177                ← 这才是解析结果
+	//
+	// 所以只能在 "Non-authoritative answer" 之后取 Address，否则会把 DNS
+	// 服务器地址当成解析结果（实测就取成了 202.103.225.68:53）。
+	//
+	// 用 split 定位而不是 /Non-authoritative answer:([\s\S]*)/：ucode 的
+	// 正则不支持 [\s\S] 这类字符类组合，匹配会静默失败，DNS 就永远显示未通过。
+	const parts = split(text, 'Non-authoritative answer:');
+	const body = (type(parts) == 'array' && length(parts) > 1)
+		? parts[1]
+		: '';
+
+	// 可能有多个地址（含 IPv6），取第一个即可 —— 诊断要回答的是「能不能解出
+	// 地址」，不是枚举全部记录。
+	const m = match(body, /Address[ \t]*:[ \t]*([0-9a-fA-F.]+)/);
+
+	if (m == null)
+		return {
+			ok: false,
+			ms: ms,
+			error: trim(split(text, '\n')[0] ?? '无结果'),
+		};
+
+	return { ok: true, ms: ms, addrs: m[1] };
+}
+
+// 对外：跑一次完整诊断。顺序是「就近到远」，这样失败点本身就能定位问题：
+// 网关不通 = 局域网问题；网关通而公网不通 = 上行问题；两者都通而 DNS 不通
+// = 解析问题。
+function diagnose() {
+	const started = monotonic();
+	const gateway = defaultGateway();
+
+	// 公网探针用 223.5.5.5（阿里公共 DNS）而不是 8.8.8.8。理由是实测：这台
+	// 设备所在线路对 8.8.8.8 是 100% 丢包，对 223.5.5.5 是 21.8 ms 正常。
+	// 用 8.8.8.8 会把「线路屏蔽了 Google DNS」报成「公网不通」，那是误诊 ——
+	// 诊断的每一条结论都必须真的能推出设备有问题。
+	//
+	// 用 IP 而非域名，这一步就是要绕开 DNS 单独验证纯连通性。
+	const probe = '223.5.5.5';
+
+	const gw = gateway != null
+		? pingHost(gateway)
+		: { ok: false, error: '读不到默认路由' };
+
+	const inet = pingHost(probe);
+	const dns = resolveHost('www.baidu.com');
+
+	const checks = [
+		{
+			key: 'gateway',
+			label: '到网关',
+			detail: gateway ?? '未找到默认网关',
+			status: gw.ok ? 'pass' : 'fail',
+			value: gw.rtt != null ? `${gw.rtt} ms` : null,
+			loss: gw.loss,
+			error: gw.error ?? null,
+		},
+		{
+			key: 'internet',
+			label: `到公网 ${probe}`,
+			detail: 'ICMP，不依赖 DNS',
+			status: inet.ok ? 'pass' : 'fail',
+			value: inet.rtt != null ? `${inet.rtt} ms` : null,
+			loss: inet.loss,
+			error: inet.error ?? null,
+		},
+		{
+			key: 'dns',
+			label: 'DNS 解析',
+			detail: 'www.baidu.com',
+			// 解析不通但网关与公网都通，是「警告」而不是「失败」：网络能用，
+			// 只是某些域名可能打不开。
+			status: dns.ok ? 'pass' : (gw.ok && inet.ok ? 'warn' : 'fail'),
+			value: dns.ok ? `${round(dns.ms)} ms` : null,
+			addrs: dns.addrs ?? null,
+			error: dns.error ?? null,
+		},
+	];
+
+	// 丢包不是 0 也不是 100 时单独提出来：这类「通但抖」最难察觉。
+	//
+	// 用 `for (x in arr)` 而不是 `for (const c of arr)`：ucode 不支持 for...of，
+	// 整个文件会因此在加载期失败 —— 而 rpcd 只会表现为「对象不存在」，
+	// 看起来像 ACL 或安装问题，排查成本很高。
+	for (let c in checks)
+		if (c.status == 'pass' && c.loss != null && c.loss > 0) {
+			c.status = 'warn';
+			c.error = `丢包 ${c.loss}%`;
+		}
+
+	// 同理，ucode 的 filter 是全局函数 filter(arr, fn)，不是数组方法。
+	const failed = length(filter(checks, function(c) { return c.status == 'fail'; }));
+	const warned = length(filter(checks, function(c) { return c.status == 'warn'; }));
+
+	return {
+		ok: failed == 0,
+		at: time(),
+		elapsedMs: round((monotonic() - started) * 1000),
+		gateway: gateway,
+		checks: checks,
+		// 一句话结论，前端直接显示，不用自己拼。
+		verdict: failed > 0
+			? `${failed} 项未通过`
+			: (warned > 0 ? `${warned} 项需注意` : '全部通过'),
+	};
+}
+
 const methods = {
 	connections: {
 		// rpcd 需要显式声明参数模式，否则 req.args 永远为空 —— 参数根本
@@ -306,6 +660,91 @@ const methods = {
 			return { names: names };
 		}
 	},
-};
 
+	dashboard: {
+		// sections 用逗号分隔的字符串而不是数组：与 resolve 的 ips 同理，
+		// String 在各版本 rpcd 上都可靠。缺省 = "fast,slow,caps"。
+		args: { sections: 'String' },		call: function(req) {
+			const raw = req?.args?.sections;
+			const want = (type(raw) == 'string' && length(raw) > 0)
+				? raw
+				: 'fast,slow,caps';
+			const out = { available: true, at: monotonic() };
+
+			if (index(want, 'caps') >= 0 || index(want, 'all') >= 0)
+				out.caps = probeCaps();
+
+			if (index(want, 'fast') >= 0 || index(want, 'all') >= 0) {
+				const sample = fastSample();
+
+				// CPU 与速率都是差分，必须有上一轮才有意义。
+				// 首轮如实返回 null，前端显示“—”，不伪造 0。
+				if (lastFast != null) {
+					out.fast = {
+						cpu: cpuUsage(lastFast.cpu, sample.cpu),
+						cpuPer: cpuUsagePer(lastFast.cpu, sample.cpu),
+						net: netRates(lastFast.net, sample.net, sample.at - lastFast.at),
+						load: sample.load,
+						mem: sample.mem,
+						temp: sample.temp,
+						conntrack: sample.conntrack,
+						sampled: true,
+					};
+				}
+				else {
+					out.fast = {
+						cpu: null,
+						cpuPer: null,
+						net: null,
+						load: sample.load,
+						mem: sample.mem,
+						temp: sample.temp,
+						conntrack: sample.conntrack,
+						sampled: false,
+					};
+				}
+
+				lastFast = sample;
+			}
+
+			if (index(want, 'slow') >= 0 || index(want, 'all') >= 0) {
+				const state = loadHistory();
+
+				out.slow = {
+					// 回看：采样器累积的历史。没跑采样器时如实为空。
+					history: state,
+					// 连接表汇总：这是那 740 ms 的部分。
+					conns: slowSummary(),
+				};
+			}
+
+			return out;
+		}
+	},
+
+	// 一键诊断：由按钮触发的一次性检查，跑完即结束，不参与后续刷新。
+	// 无参数 —— 探针目标由后端决定（网关从路由表读，公网用固定 IP，
+	// DNS 用域名），前端不该知道这些细节。
+	diagnose: {
+		call: function() {
+			// 包一层：rpcd 会把未捕获异常变成 rc=247「Unknown error」，
+			// 在设备上什么都查不到。把异常当成普通数据返回，前端（和调试时
+			// 的 ubus call）就能直接看到原因。
+			try {
+				return diagnose();
+			}
+			catch (e) {
+				return {
+					ok: false,
+					at: time(),
+					elapsedMs: 0,
+					gateway: null,
+					checks: [],
+					verdict: `诊断出错：${e}`,
+					error: `${e}`,
+				};
+			}
+		}
+	},
+};
 return { shadcn: methods };

@@ -1,0 +1,31 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: Apache-2.0
+#
+# 概览看板的回看采样器。见 .dev/docs/adr/0005-sampler-tmpfs-and-procd.md。
+#
+# 只负责把 sampler.uc 拉起来并看住它：采样逻辑在 ucode 里，重启由 procd
+# 兜底。写 tmpfs，重启后回看自然清零。
+
+START=95
+STOP=10
+
+USE_PROCD=1
+NAME=shadcn-dashboard
+PROG=/usr/bin/ucode
+SCRIPT=/usr/share/ucode/shadcn/sampler.uc
+
+start_service() {
+	procd_open_instance
+	procd_set_param command "$PROG" "$SCRIPT"
+	procd_set_param respawn 3600 5 5
+	# 采样是后台记账，不该和前台流量抢 CPU。
+	procd_set_param nice 19
+	procd_set_param stdout 0
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+reload_service() {
+	stop
+	start
+}
