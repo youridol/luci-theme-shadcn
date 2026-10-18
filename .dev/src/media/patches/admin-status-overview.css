@@ -785,6 +785,28 @@ html.shadcn-drawer-lock body {
   box-shadow: var(--shadow-sm);
 }
 
+/* 「资源与运行」的三张卡（CPU / 内存与存储 / 系统信息）等高。
+
+   .shadcn-dash-grid 全局是 align-items: start，每张卡按自己的内容定高 ——
+   那对线路、流量区的宽卡是对的（它们内容量差别很大），但这一组是并排
+   读数，三张高低不齐会让卡片底边参差、下方的图表对齐也跟着歪。
+
+   只在这个分区改成 stretch，并把卡片本身变成 flex column，让 body 用
+   flex:1 吃满剩余高度 —— 否则卡片虽然被拉高，内容仍堆在顶部，底部留一片
+   空白。 */
+#shadcn-dash-res .shadcn-dash-grid {
+  align-items: stretch;
+}
+
+#shadcn-dash-res .shadcn-dash-card {
+  display: flex;
+  flex-direction: column;
+}
+
+#shadcn-dash-res .shadcn-dash-card-body {
+  flex: 1;
+}
+
 .shadcn-dash-card-title {
   margin: 0 0 8px;
   font-size: 0.75rem;
@@ -865,6 +887,33 @@ html.shadcn-drawer-lock body {
 
 .shadcn-dash-card-body > .shadcn-dash-chart {
   max-height: 120px;
+}
+
+/* CPU 卡的火花线吸收等高后多出来的高度。
+
+   「资源与运行」三张卡等高（见 #shadcn-dash-res 那组规则），而决定高度的
+   是内容最满的内存卡（环形图 96px）。CPU 卡只有一行读数 + 火花线 + 每核
+   细条，实测内容 99px，拉伸后底部空 97px —— 空白比内容还多。
+
+   所以让火花线吃掉余量：它是这一卡里唯一可以变高而不失真的元素
+   （viewBox + preserveAspectRatio 会把曲线等比铺开）。每核细条与读数行
+   保持自身高度，不被拉伸。
+
+   但必须有上限：不加限制时 flex 会把火花线拉到 132px，反过来把卡片撑到
+   268px，于是另外两张卡又多出空白 —— 等高的基准应当是最满的那张
+   （内存卡），而不是最空的那张。 */
+[data-card="cpu"] .shadcn-dash-card-body > .shadcn-dash-chart {
+  flex: 1;
+  height: auto;
+  min-height: 34px;
+  max-height: 96px;
+}
+
+/* 系统信息卡没有可拉伸的元素（五行键值），等高后余量 71px。
+   这里把余量均分到行间：五行视觉上铺满整卡，而不是挤在顶部、底下空一块。
+   均分而不是居中 —— 属性表按行读，行距拉开比整体下移更好读。 */
+[data-card="sys"] .shadcn-dash-card-body {
+  justify-content: space-between;
 }
 
 /* The isometric hour bars need the extra height (24 slots + the sheared top
@@ -1274,6 +1323,26 @@ html.shadcn-drawer-lock body {
     gap: 12px;
   }
 
+  /* 单列堆叠时「等高」没有意义：每张卡独占一行，等高只会给内容少的那张
+     平白加一截空白。显式退回按内容定高。 */
+  #shadcn-dash-res .shadcn-dash-grid {
+    align-items: start;
+  }
+
+  #shadcn-dash-res .shadcn-dash-card {
+    display: block;
+  }
+
+  [data-card="cpu"] .shadcn-dash-card-body > .shadcn-dash-chart {
+    flex: initial;
+    height: 34px;
+    max-height: 34px;
+  }
+
+  [data-card="sys"] .shadcn-dash-card-body {
+    justify-content: flex-start;
+  }
+
   .shadcn-dash-band {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 8px;
@@ -1296,8 +1365,12 @@ html.shadcn-drawer-lock body {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .shadcn-dash-section:not(#shadcn-dash-net) {
-    order: 10;
+  /* 手机上只要「现在通不通、哪里出问题」，所以只留概况带与异常横幅常驻，
+     分区顺序跟随 DOM：资源与运行 → 线路 → 流量。早先这里是「线路提前」，
+     因为线路当时排在第一位；现在资源组在最前，若仍把线路提前，手机和桌面
+     的顺序就会相反。 */
+  .shadcn-dash-section {
+    order: 0;
   }
 
   .shadcn-dash-bar {

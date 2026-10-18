@@ -600,12 +600,8 @@
     band.appendChild(dashTile("temp", "系统温度", "activity"));
     root.appendChild(band);
 
-    const net = dashSection("net", "线路", "延迟 · 丢包 · 地址");
-    const lines = dashCard("每条线路", "lines", true);
-    lines.body.classList.add("shadcn-dash-lines");
-    net.body.appendChild(lines.card);
-    root.appendChild(net.wrap);
-
+    // 「资源与运行」放在线路之前：CPU、内存、存储、系统是打开页面最先要看的
+    // 一组状态，线路状态排在其后。概况带（磁贴）仍在最上面。
     const res = dashSection("res", "资源与运行", "CPU · 内存 · 存储 · 系统");
     const cpu = dashCard("CPU", "cpu");
     res.body.appendChild(cpu.card);
@@ -616,6 +612,12 @@
     const sys = dashCard("系统信息", "sys");
     res.body.appendChild(sys.card);
     root.appendChild(res.wrap);
+
+    const net = dashSection("net", "线路", "延迟 · 丢包 · 地址");
+    const lines = dashCard("每条线路", "lines", true);
+    lines.body.classList.add("shadcn-dash-lines");
+    net.body.appendChild(lines.card);
+    root.appendChild(net.wrap);
 
     const flow = dashSection("flow", "流量", "速率 · 排行 · 分布");
     flow.body.appendChild(dashCard("端口实时流量", "ports", true).card);
