@@ -804,8 +804,10 @@ html.shadcn-drawer-lock body {
     grid-column: span 1;
   }
 
+  /* 四列：CPU / 内存与存储 / 系统信息 / 拨号信息。
+     拨号信息卡放在系统信息右侧，两张都是「键值表」形态，并排读起来一致。 */
   #shadcn-dash-res .shadcn-dash-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   #shadcn-dash-flow .shadcn-dash-grid {
@@ -979,6 +981,31 @@ html.shadcn-drawer-lock body {
 /* 标签不换行也不收缩：否则值一长，「处理器」三个字会被挤成两列。 */
 [data-card="sys"] .shadcn-dash-metric-row span {
   flex-shrink: 0;
+}
+
+/* 拨号信息卡：与系统信息卡同一套键值行形态，额外的处理有两点。
+
+   1. IPv6 地址长达 39 字符（实测 240e:350:7e0a:885a:a8f3:67cf:ba3f:29fd），
+      按普通字重渲染时一列里全是省略号。改成等宽字体 + 小一号，同一宽度能
+      多显示几个字符，也让地址看起来像地址而不是散文。
+   2. 值仍单行省略，完整值在 title 上（渲染时代码里写入）。 */
+[data-card="wan"] .shadcn-dash-metric-row strong {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+[data-card="wan"] .shadcn-dash-metric-row span {
+  flex-shrink: 0;
+}
+
+[data-card="wan"] .shadcn-dash-mono {
+  font-family:
+    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 /* ── 图表配色 ───────────────────────────────────────────────────────

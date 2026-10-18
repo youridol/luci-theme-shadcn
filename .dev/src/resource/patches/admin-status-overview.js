@@ -407,6 +407,84 @@
   let dashViewReady = false;
   let dashRpc = null;
 
+  /* 某个对端地址是否属于本机 LAN。
+     后端下发的 hosts 排行是按流量聚合**所有对端**的，混着公网地址；「Top
+     主机」与「在线终端」两个数字都只该算内网，否则同一块看板里两张卡口径
+     不同。所以判定抽成这一处，两边共用。
+
+     IPv4 用后端给的 lanPrefix（来自 /etc/config/network 的 lan.ipaddr），
+     这是静态配置的权威来源。
+
+     IPv6 不能只看 fe80::/10 与 fc00::/7。实测这台机器 SlaacClients 拿到的是
+     运营商委派前缀下的全局地址（240e:0355:7fcb:2300:29d4:...），既不是
+     link-local 也不是 ULA —— 按前缀判会**把内网设备全漏掉**（实测 10 个
+     hosts 里 2 个就是这种）。所以还要比对 wan_6 委派给 LAN 的前缀：
+     后端的 caps.wan.prefixes 里带 assigned.lan 的那条。
+     另外注意地址可能带前导零（240e:0355 而不是 240e:355），比较前统一去掉。 */
+  function dashNormalizeV6(addr) {
+    /* 去掉每段的前导零，并去掉末尾的空段（`::` 展开后的残留）。
+       只用正则去尾零不够：`240e:355:7fcb:2300::` 归一化后仍是
+       `240e:355:7fcb:2300::`，再拼 ":" 去比就成了三段冒号，永远不匹配 ——
+       实测内网主机因此全被漏掉。这里显式过滤空段。 */
+    return addr
+      .toLowerCase()
+      .split(":")
+      .map(function (g) {
+        return g.replace(/^0+(?=.)/, "");
+      })
+      .filter(function (g) {
+        return g !== "";
+      })
+      .join(":");
+  }
+
+  function dashIsLanHost(addr) {
+    if (!addr) return false;
+
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(addr))
+      return lanPrefix != null ? addr.indexOf(lanPrefix + ".") === 0 : false;
+
+    const low = addr.toLowerCase();
+
+    // IPv4-mapped 写法（::ffff:192.168.x.x）按 IPv4 处理。
+    const mapped = low.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) return dashIsLanHost(mapped[1]);
+
+    if (low === "::1") return true;
+    if (/^fe[89ab]/.test(low)) return true; // link-local
+    if (/^f[cd]/.test(low)) return true; // ULA
+
+    // 委派前缀下的地址：这才是 SlaacClients 的实际形态。
+    // 优先用「已分给 LAN」的那些前缀，没有标记时退回全部。
+    const all = (dashCaps && dashCaps.wan && dashCaps.wan.prefixes) || [];
+    const lanOnly = all.filter(function (p) {
+      return p && p.lan;
+    });
+    const prefixes = lanOnly.length ? lanOnly : all;
+
+    const norm = dashNormalizeV6(addr);
+
+    for (const p of prefixes) {
+      if (!p || !p.address) continue;
+
+      // 归一化后两边都是「无前导零、无空段」的完整组序列，直接做前缀比对。
+      const base = dashNormalizeV6(p.address);
+      if (!base) continue;
+
+      if (norm === base || norm.indexOf(base + ":") === 0) return true;
+    }
+
+    return false;
+  }
+
+  // hosts 排行里只留下内网主机，保持原有的流量降序。
+  function dashLanHosts(list) {
+    if (!list) return [];
+    return list.filter(function (h) {
+      return dashIsLanHost(h.k);
+    });
+  }
+
   function dashEl(tag, cls, text) {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
@@ -611,7 +689,11 @@
     band.appendChild(dashTile("temp", "系统温度", "activity"));
 
     // 顺序：资源与运行 → 概况带 → 线路 → 流量。
-    const res = dashSection("res", "资源与运行", "CPU · 内存 · 存储 · 系统");
+    const res = dashSection(
+      "res",
+      "资源与运行",
+      "CPU · 内存 · 存储 · 系统 · 拨号",
+    );
     const cpu = dashCard("CPU", "cpu");
     res.body.appendChild(cpu.card);
     const mem = dashCard("内存与存储", "mem");
@@ -620,6 +702,10 @@
     // 一次就缓存（probe.uc 的 board()），所以放在这里不增加每分钟开销。
     const sys = dashCard("系统信息", "sys");
     res.body.appendChild(sys.card);
+    // 拨号信息：IPv4/IPv6 地址、委派前缀、DNS、在线时长。放在系统信息右侧，
+    // 资源区因此变成四列。数据来自 caps.wan（10 秒 TTL 缓存）。
+    const wan = dashCard("拨号信息", "wan");
+    res.body.appendChild(wan.card);
     root.appendChild(res.wrap);
 
     root.appendChild(band);
@@ -890,17 +976,21 @@
       });
     }
 
-    // 在线终端：只有连接表聚合知道有多少个不同 LAN 地址在产生流量。
+    // 在线终端：只数内网主机，与「Top 主机」同一套判定。未过滤的总数里含着
+    // 公网对端，会让这张磁贴与旁边的排行卡对不上。
     const hostTile = dashBoard.querySelector('[data-tile="hosts"]');
     if (hostTile) {
       const conns = slow && slow.conns;
-      const n = conns && conns.available ? conns.compact.hosts.length : null;
+      const n =
+        conns && conns.available
+          ? dashLanHosts(conns.compact.hosts).length
+          : null;
       dashSetValue(
         hostTile,
         n != null ? String(n) : "—",
         n != null ? "台" : "",
       );
-      dashSetFoot(hostTile, n != null ? "按流量聚合" : "连接表不可用");
+      dashSetFoot(hostTile, n != null ? "仅内网 · 按流量聚合" : "连接表不可用");
     }
 
     const connTile = dashBoard.querySelector('[data-tile="conns"]');
@@ -1215,6 +1305,69 @@
         }
       }
     }
+
+    /* 拨号信息卡。
+
+       字段顺序按运维查看习惯：先看连没连上、协议与在线时长，再看地址。
+       IPv4 与 IPv6 分开列 —— 这台机器 wan 上只有 link-local，公网 v6 在
+       wan_6 上，合并成一行会让人以为 IPv6 没拨上。
+
+       值都可能很长（IPv6 地址 39 字符），统一单行省略 + title 兜底，和系统
+       信息卡一致。 */
+    const wanBody = dashBoard.querySelector(
+      '[data-card="wan"] .shadcn-dash-card-body',
+    );
+    if (wanBody) {
+      wanBody.textContent = "";
+      const w = dashCaps && dashCaps.wan;
+
+      if (!w || !w.available) {
+        wanBody.appendChild(
+          dashEl("p", "shadcn-dash-empty", (w && w.reason) || "拨号信息不可用"),
+        );
+      } else {
+        const fmtAddr = function (a) {
+          return a.mask != null ? a.address + "/" + a.mask : a.address;
+        };
+
+        const rows = [
+          ["状态", w.up ? "已连接" : "未连接"],
+          ["协议", w.proto],
+          ["在线时长", w.uptime != null ? dashDuration(w.uptime) : null],
+          ["IPv4", w.v4 && w.v4.length ? fmtAddr(w.v4[0]) : "—"],
+          // 前缀单列：它决定内网 v6 段，比接口地址更常被查。
+          [
+            "IPv6 前缀",
+            w.prefixes && w.prefixes.length ? fmtAddr(w.prefixes[0]) : "—",
+          ],
+          // IPv6 可能拿到多个地址，这里只列第一个，其余数量写在标签里。
+          ["IPv6", w.v6 && w.v6.length ? fmtAddr(w.v6[0]) : "—"],
+          ["DNS", w.dns && w.dns.length ? w.dns.join(" · ") : "—"],
+        ];
+
+        for (const [label, value] of rows) {
+          if (value == null || value === "") continue;
+          const row = dashEl("div", "shadcn-dash-metric-row");
+          row.dataset.field = label;
+          const strong = dashEl("strong", null, value);
+          strong.title = value;
+
+          // IPv6 地址长，用小一号字，避免一列里全是省略号。
+          if (label === "IPv6" || label === "IPv6 前缀") {
+            strong.classList.add("shadcn-dash-mono");
+          }
+
+          row.appendChild(strong);
+
+          let tag = label;
+          if (label === "IPv6" && w.v6 && w.v6.length > 1)
+            tag = label + " +" + (w.v6.length - 1);
+
+          row.appendChild(dashEl("span", "shadcn-dash-muted", tag));
+          wanBody.appendChild(row);
+        }
+      }
+    }
   }
 
   // 把历史按本地小时归桶，补齐 24 根柱子。
@@ -1342,15 +1495,23 @@
     if (hostBody) {
       hostBody.textContent = "";
       const conns = slow && slow.conns;
-      if (conns && conns.available && conns.compact.hosts.length) {
-        const max = conns.compact.hosts[0].b || 1;
+
+      /* 只保留内网主机：后端的 hosts 排行按流量聚合所有对端，混着公网地址
+         （实测出现过 100.119.107.42、240e:… 这类），而这张卡要回答的是
+         「局域网里谁在占带宽」。判定与「在线终端」磁贴共用 dashLanHosts，
+         避免同一块看板里两个数字口径不同。 */
+      const lanHosts =
+        conns && conns.available ? dashLanHosts(conns.compact.hosts) : [];
+
+      if (lanHosts.length) {
+        const max = lanHosts[0].b || 1;
         /* 只画前 6 名。
            原来不限条数，实测排到 10 行 × 42px = 420px，把这张卡撑到 541px，
            同一行的另外三张（248 / 169 / 188）就只能靠顶部对齐、下面空一大片。
            6 行既够看出「谁在占带宽」，又能让四张卡等高。
            完整的连接明细在抽屉里（点主机名打开），不靠这张卡列全。 */
         const TOP_HOSTS = 6;
-        for (const h of conns.compact.hosts.slice(0, TOP_HOSTS)) {
+        for (const h of lanHosts.slice(0, TOP_HOSTS)) {
           const row = dashEl("div", "shadcn-dash-rankrow");
 
           // 下钻进那台主机的实时连接：复用抽屉，只是换一个触发点。
@@ -1371,7 +1532,8 @@
         }
 
         // 截断要说明，否则「只有 6 台」会被当成全部在线终端数。
-        const total = conns.compact.hosts.length;
+        // 分母用过滤后的内网主机数，不能用未过滤的总数。
+        const total = lanHosts.length;
         if (total > TOP_HOSTS) {
           hostBody.appendChild(
             dashEl(
@@ -1382,13 +1544,16 @@
           );
         }
       } else {
-        hostBody.appendChild(
-          dashEl(
-            "p",
-            "shadcn-dash-empty",
-            conns && conns.error ? conns.error : "暂无排行数据",
-          ),
-        );
+        /* 空态分三种，说清楚是哪一种：
+           · 连接表读不到 —— 报后端的错因；
+           · 读到了但没有内网主机 —— 这时公网对端可能有流量，要说明是过滤的
+             结果，而不是「没有数据」；
+           · 连分配表都空 —— 真的没有连接。 */
+        let emptyText = "暂无排行数据";
+        if (conns && conns.error) emptyText = conns.error;
+        else if (conns && conns.available && conns.compact.hosts.length)
+          emptyText = "内网主机暂无流量";
+        hostBody.appendChild(dashEl("p", "shadcn-dash-empty", emptyText));
       }
     }
 
@@ -1453,6 +1618,9 @@
       const elapsed = Date.now() - started;
 
       if (data.caps) dashCaps = data.caps;
+      // LAN 网段：后端随 dashboard 一起下发（dashboard 与 connections 是两个
+      // 接口，早先只在后者里有这个字段，于是看板这边恒为 null，内网判定失效）。
+      if (data.lan) lanPrefix = data.lan;
 
       const fast = data.fast;
       if (fast) {

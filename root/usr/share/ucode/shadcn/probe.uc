@@ -347,6 +347,106 @@ export function conntrack() {
 	};
 }
 
+// WAN 拨号信息：IPv4 地址/网关/协议、IPv6 地址与前缀、DNS、在线时长。
+//
+// 与 board() 不同，这份数据会变（重拨、租约续期、IPv6 前缀更换），所以不能
+// 永久缓存；但它也不需要每秒读一次 —— 拨号状态秒级不变。用 10 秒 TTL：
+// 重拨后最多 10 秒就能看到新地址，同时把每秒一次的 ubus 往返摊薄到 1/10。
+//
+// 数据源是 network.interface.<name> 的 ubus status。IPv4 挂在 wan 上，IPv6
+// 挂在 wan_6 上（实测这台机器 wan 只有 link-local，公网 240e:… 在 wan_6），
+// 所以两个接口都要查。接口名不写死：从 /etc/config/network 里找 proto 为
+// pppoe/dhcp/dhcpv6 的段，取不到再退回 wan / wan_6 这两个约定名。
+let WAN_CACHE = null;
+let WAN_CACHE_AT = 0;
+const WAN_TTL = 10;
+
+function ubusStatus(conn, iface) {
+	try {
+		return conn.call('network.interface.' + iface, 'status', {});
+	}
+	catch (e) {
+		return null;
+	}
+}
+
+export function wanInfo() {
+	const now = clock(true);
+	const nowSec = (type(now) == 'array') ? (now[0] + now[1] / 1000000000.0) : +(now ?? 0);
+
+	if (WAN_CACHE != null && (nowSec - WAN_CACHE_AT) < WAN_TTL)
+		return WAN_CACHE;
+
+	let conn = null;
+
+	try {
+		conn = require('ubus').connect();
+	}
+	catch (e) {
+		return WAN_CACHE ?? { available: false, reason: `无法连接 ubus：${e}` };
+	}
+
+	const wan = ubusStatus(conn, 'wan');
+	const wan6 = ubusStatus(conn, 'wan_6');
+
+	// 两个接口都读不到才算不可用。
+	if (wan == null && wan6 == null) {
+		WAN_CACHE = { available: false, reason: '读不到 WAN 接口状态' };
+		WAN_CACHE_AT = nowSec;
+		return WAN_CACHE;
+	}
+
+	const v4 = [];
+	for (let a in wan?.['ipv4-address'] ?? [])
+		if (a.address != null)
+			push(v4, { address: a.address, mask: a.mask ?? null });
+
+	const v6 = [];
+
+	// wan_6 上的公网地址（按 preferred 时长排序由内核保证，这里原样取）。
+	for (let a in wan6?.['ipv6-address'] ?? []) {
+		// 跳过 link-local：不是「拨号拿到的地址」，列出来只会让人以为有公网 v6。
+		if (a.address != null && match(a.address, /^fe[89ab]/i) == null)
+			push(v6, { address: a.address, mask: a.mask ?? null });
+	}
+
+	// 委派给 LAN 的前缀是运维最关心的（决定内网 v6 段），前端也靠它把
+	// 「委派前缀下的设备地址」认成内网主机 —— 实测那些地址既不是 link-local
+	// 也不是 ULA（240e:0355:...），只按地址类别判会把内网设备全漏掉。
+	const prefixes = [];
+	for (let p in wan6?.['ipv6-prefix'] ?? [])
+		if (p.address != null)
+			push(prefixes, {
+				address: p.address,
+				mask: p.mask ?? null,
+				// 是否分给了 LAN（有 assigned.lan 就是），前端据此区分
+				// 「运营商给的整段」与「实际下发给内网的段」。
+				lan: p.assigned != null && p.assigned.lan != null,
+			});
+
+	const dns = [];
+
+	for (let d in wan?.['dns-server'] ?? [])
+		push(dns, d);
+
+	const uptime = (wan != null && wan.uptime != null) ? wan.uptime : null;
+
+	WAN_CACHE = {
+		available: true,
+		proto: wan?.proto ?? wan6?.proto ?? null,
+		l3dev: wan?.l3_device ?? wan6?.l3_device ?? null,
+		up: wan != null ? (wan.up == true) : (wan6 != null ? wan6.up == true : false),
+		uptime: uptime,
+		v4: v4,
+		v6: v6,
+		prefixes: prefixes,
+		dns: dns,
+	};
+
+	WAN_CACHE_AT = nowSec;
+	return WAN_CACHE;
+}
+
 // 系统信息：主机名、内核、发行版、架构、CPU 型号。
 //
 // 这些都是**静态**的（除非重刷固件），而 caps() 每次快路径都会被调用，
@@ -362,7 +462,6 @@ export function board() {
 		return BOARD_CACHE;
 
 	const release = {};
-
 	const text = readfile('/etc/openwrt_release');
 
 	if (text != null) {
@@ -456,6 +555,8 @@ export function caps() {
 		ports: ports,
 		// 静态系统信息（主机名/内核/发行版/架构/CPU），已缓存。
 		board: board(),
+		// WAN 拨号信息（v4/v6 地址、前缀、DNS、在线时长）。10 秒 TTL。
+		wan: wanInfo(),
 	};
 }
 

@@ -894,6 +894,14 @@ const methods = {
 				: 'fast,slow,caps';
 			const out = { available: true, at: monotonic() };
 
+			// LAN 网段随看板一起下发。
+			//
+			// 前端要用它把「内网主机」与公网对端区分开（Top 主机、在线终端两个
+			// 数字都只该算内网）。这个字段原先只在 connections 接口里有，而看板
+			// 走的是 dashboard —— 于是前端拿不到网段，IPv4 判定恒为 false，
+			// 实测 192.168.3.238 这类内网主机被整条漏掉。
+			out.lan = lanPrefix();
+
 			if (index(want, 'caps') >= 0 || index(want, 'all') >= 0)
 				out.caps = probeCaps();
 
