@@ -1,23 +1,24 @@
 # Thresholds for the Overview dashboard's anomaly banner.
 #
-# This is an EXAMPLE, not a live config: the `.example` suffix means the package
-# never places it in /etc/config, so it cannot overwrite a file you already
-# edited. To use it:
-#
-#     cp /etc/config/shadcn-dashboard.example /etc/config/shadcn-dashboard
-#
-# Without that file every value falls back to its built-in default, and the
-# values written here ARE those defaults — so copying it changes nothing until
-# you edit a number. The board's alert rows show the limit each one is judged
-# against, so you can confirm an edit took effect.
+# Shipped by the package and tracked as a conffile, so your edits survive an
+# upgrade (opkg keeps the existing file and writes the new one beside it as
+# .opkg-dist). Deleting this file is also supported: the dashboard then falls
+# back to the defaults below, and the settings page offers a button that
+# recreates it.
 #
 # Judgement happens in the backend (root/usr/share/rpcd/ucode/shadcn.uc,
 # `buildAlerts`), not in the browser: the backend is what holds the raw
 # numerator and denominator, and comparing a percentage that has already been
 # rounded would misjudge the boundary.
 #
+# The values below ARE the defaults, so a fresh install behaves exactly as it
+# did before this file existed. Edit the ones you want to change.
+#
 # A value that is not a number, or is negative, is ignored and the default is
 # used. A typo must not turn a threshold into 0 and flash alarms everywhere.
+#
+# Edit through LuCI (System -> Dashboard Alerts) rather than by hand: the page
+# validates the ranges and shows each field's default as its placeholder.
 
 config alert 'alert'
 	# Connection-table occupancy, percent of nf_conntrack_max.

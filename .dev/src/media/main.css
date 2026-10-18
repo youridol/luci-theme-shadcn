@@ -32,6 +32,13 @@
 @source not "../media/patches/**/*.css";
 @source not "../resource/patches/**/*.js";
 
+/* LuCI view scripts are the same kind of hazard: they build their DOM in JS and
+   their prose gets scanned as utility candidates. Adding the settings page's
+   source emitted a stray `.visible` rule into this file, because one comment
+   said a drift "would be visible rather than silent". Views render into LuCI's
+   own markup and never need a utility from main.css. */
+@source not "../resource/view/**/*.js";
+
 /* This theme ships a single colour scheme (.dev/docs/adr/0002-dark-only.md):
    every component reads the `:root` token set, so there is no `dark:` variant
    to define. */

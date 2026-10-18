@@ -1,13 +1,23 @@
 {
   "shadcn": {
-    "description": "luci-theme-shadcn: online-host connection details, overview dashboard data and the on-demand diagnostics",
+    "description": "luci-theme-shadcn: online-host connection details, overview dashboard data, the on-demand diagnostics and the dashboard alert thresholds",
     "read": {
       "ubus": {
-        "shadcn": ["connections", "resolve", "dashboard", "diagnose"]
+        "shadcn": [
+          "connections",
+          "resolve",
+          "dashboard",
+          "diagnose",
+          "createConfig"
+        ]
       },
       "file": {
         "/tmp/dhcp.leases": ["read"]
-      }
+      },
+      "uci": ["shadcn-dashboard"]
+    },
+    "write": {
+      "uci": ["shadcn-dashboard"]
     }
   }
 }

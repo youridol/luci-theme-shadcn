@@ -1,0 +1,13 @@
+{
+  "admin/system/dashboard-alerts": {
+    "title": "Dashboard Alerts",
+    "order": 60,
+    "action": {
+      "type": "view",
+      "path": "shadcn-dashboard"
+    },
+    "depends": {
+      "acl": ["shadcn"]
+    }
+  }
+}

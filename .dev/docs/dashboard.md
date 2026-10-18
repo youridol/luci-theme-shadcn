@@ -70,11 +70,9 @@
 
 阈值可用 `/etc/config/shadcn-dashboard` 逐项覆盖，**判定在后端**（`shadcn.uc` 的 `buildAlerts`），因为后端才握有原始数值；前端拿到的是已经四舍五入的百分比，用它去比阈值会在边界上错判。每条告警都带 `limit`，横幅里直接显示「阈值 0.1%」这类字，有覆盖时再补一句「阈值来自 /etc/config/shadcn-dashboard：…」，所以改完配置能确认生效。
 
-配置是**可选**的：文件不存在时全部落回默认值。仓库里给的是 `root/etc/config/shadcn-dashboard.example`（`.example` 后缀，安装时不会覆盖你已改过的配置），用法：
+配置随包安装（`root/etc/config/shadcn-dashboard`），由 opkg 按 conffile 处理，升级时保留你的修改、把新版本写成 `.opkg-dist` 放旁边。它同时也是**可选**的：文件不存在时全部落回默认值，看板照常工作，设置页会给出「Create configuration」按钮把它重建出来。
 
-```sh
-cp /etc/config/shadcn-dashboard.example /etc/config/shadcn-dashboard
-```
+改它请走 **System → Dashboard Alerts**，不要手写 —— 页面会校验取值范围，并把每项的内置默认值显示成 placeholder。
 
 非数字或负数的项会被忽略并回退默认值 —— 一个打错字不该把阈值变成 0 而满屏报警。**这里不能用 `isNaN`**：ucode 没有它（`isNaN('5')` 抛 "left-hand side is not a function"），而读取处的 `try/catch` 会把这个错误吞掉并回退默认值，表现为「配置写了但永远不生效」且毫无提示 —— 真机上就是这样静默失效的。改用 `n != n` 判 NaN。
 
@@ -221,12 +219,28 @@ CSS 前缀统一 `shadcn-dash-`。旧的 `.shadcn-metrics` / `.shadcn-metric` �
 
 ### 本轮未做的事（照实记录）
 
-- **阈值没有 LuCI 配置页**：`/etc/config/shadcn-dashboard` 只能手工编辑，没有表单界面。示例文件与 UCI 读取都已就位，缺的只是一个设置页。
+- **阈值没有 LuCI 配置页** → **已做**，见下文「设置页」。
 - **丢包率 / DNS 延迟进常驻告警**：这两项依赖主动探测，已按要求并入「一键诊断」而非常驻采集，所以不会出现在异常横幅里。
-- **移动端断点**：768 / 390 宽度的折叠行为只写了 CSS，未在真机或浏览器模拟下验证。
-- **`#view` 的两列网格**：看板靠 `grid-column: 1/-1` 跨列，功能正确，但原生区块的网格规则与看板共存，属冗余可清理。
+- **移动端断点** → **已做**，见下文「断点实测」。
+- **`#view` 的两列网格** → **已做**，见下文「`#view` 网格」。
 - **24 小时柱状图**：柱数由采样器运行时长决定。24 格轴的刻度已就位，当前约 84 个采样点（1.4 小时），需满 24 小时才全部填满。
 - **诊断不含 WAN 地址**：早先方案里还有「WAN 接口状态与地址」一项，实现时认为与 `caps.ports` 重复而未加。需要时从 `fast.net` 直接读即可。
+
+### 设置页
+
+`admin/system/dashboard-alerts`，源码 `src/resource/view/shadcn-dashboard.js`，菜单由 `root/usr/share/luci/menu.d/luci-theme-shadcn.json` 注册，ACL 在 `acl.d/shadcn.json` 里加了 `uci.shadcn-dashboard` 的读与写。
+
+每个字段把内置默认值显示成 placeholder，留空即删除该项 option。**「没有 option」不等于 0，而是「用默认值」** —— 这一点很关键：升级后默认值变了，没配过的人应当跟着变。所以页面从不写入用户没输入的值。
+
+三个坑，都是真机上撞出来的：
+
+1. **`uci.load()` 在配置不存在时 reject**，`view.js` 把 rejected load 当成「页面永远没就绪」，界面就卡在「正在载入视图…」。必须 catch。
+2. **只 catch load 还不够**：`form.Map#render()` 自己也调 `uci/get`，同样抛错。所以 `render` 要按 `load` 的结果分支，缺文件时走 `renderMissing()`。
+3. **UCI 没法创建不存在的配置文件**：`ubus call uci add` 返回 Not found，`uci set` 也是 `uci: Entry not found`。设置页自己造不出这个文件，于是后端加了 `shadcn.createConfig`（rpcd 进程能直接写 `/etc/config`），页面上给一个「Create configuration」按钮，建完重载。
+
+`createConfig` 只写默认值，已存在则不动（返回 `created: false`），避免覆盖用户编辑。
+
+真机验证：表单改 `conntrack_warn` → 保存并应用 → `uci show` 得 `'1'`、后端 `thresholds` 得 `value 1 / source config`；删掉文件 → 页面给出说明与按钮 → 点击后文件重建（600 权限，与 `/etc/config/system` 一致）、表单恢复 6 个字段。
 
 ### 断点实测（已做）
 
@@ -267,3 +281,7 @@ CSS 前缀统一 `shadcn-dash-`。旧的 `.shadcn-metrics` / `.shadcn-metric` �
 - **ucode 没有 `isNaN`**：`isNaN('5')` 抛 "left-hand side is not a function"。若外面包着 `try/catch`，错误被吞掉并回退默认值，表现是「配置永远不生效」且没有任何提示。判 NaN 用 `n != n`。
 - **`round(x)` 返回 int**：`round(0.55 * 10) / 10` 得 0（int/int 又走整数除法）。要小数必须 `round(x, true)`。这已经是整数除法在本项目里第四次咬人（CPU 使用率、conntrack/mem/storage 百分比、这里）。
 - **ucode 不接受多行函数调用的尾随逗号**：`f(\n a,\n b,\n )` 报 `Expecting expression`，报错位置指向 `);`，看起来像别的问题。写成一行。
+- **LuCI 的 `uci.load()` 对不存在的配置会 reject**，而 `view.js` 把 rejected load 当成「永不就绪」，页面卡在「正在载入视图…」。`form.Map#render()` 也会因为同样的 `uci/get` 失败而抛错 —— 两处都要处理，只 catch 一处不够。
+- **UCI 造不出不存在的配置文件**：`ubus call uci add` 与 `uci set` 都返回 Not found。要创建只能由有文件写权限的进程来（本项目用 rpcd 里的 `createConfig` 直接写 `/etc/config`）。
+- **`rpc.declare()` 返回的是可直接调用的函数**，别写 `.call()` —— 那是 `Function.prototype.call`，会把第一个参数当 `this` 并丢掉真正的参数。
+- **`depends.uci` 会把整条菜单藏起来**：菜单项写了 `"uci": { "shadcn-dashboard": true }` 而配置文件不存在时，菜单直接不出现，页面 404，看起来像没装上。配置本身是可选的，就别把它写成菜单的前提。

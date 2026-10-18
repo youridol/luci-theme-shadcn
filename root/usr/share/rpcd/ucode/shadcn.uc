@@ -23,7 +23,7 @@
 
 'use strict';
 
-import { readfile, popen } from 'fs';
+import { readfile, writefile, popen } from 'fs';
 // ucode 没有全局 Math，取整必须从 math 模块拿。
 import { round } from 'math';
 // 阈值可选配置：/etc/config/shadcn-dashboard 不存在时全用默认值。
@@ -930,6 +930,49 @@ const methods = {
 					verdict: `诊断出错：${e}`,
 					error: `${e}`,
 				};
+			}
+		}
+	},
+
+	// 建立阈值配置文件。
+	//
+	// 存在的理由：UCI 的 ubus 接口在配置文件不存在时对 `add`/`set` 一律返回
+	// 「Not found」，uci CLI 也一样（真机验证过），所以设置页没法自己造出这个
+	// 文件。而配置文件是可选的，用户删掉它之后设置页必须还能恢复 —— 只有
+	// rpcd 这个进程能直接写 /etc/config。
+	//
+	// 只写默认值，不写用户输入：写完之后前端重新 load 一次，表单就正常了。
+	createConfig: {
+		call: function() {
+			const PATH = '/etc/config/shadcn-dashboard';
+
+			try {
+				// 已存在就不动，避免覆盖用户的编辑。
+				if (readfile(PATH) != null)
+					return { ok: true, created: false };
+
+				const body = `# Thresholds for the Overview dashboard's anomaly banner.
+#
+# Created by the settings page (System -> Dashboard Alerts). Tracked as a
+# conffile, so edits survive an upgrade. Deleting this file is supported: the
+# dashboard falls back to the defaults written here.
+
+config alert 'alert'
+\toption conntrack_warn '${ALERT_DEFAULTS.conntrack_warn}'
+\toption conntrack_crit '${ALERT_DEFAULTS.conntrack_crit}'
+\toption mem_used '${ALERT_DEFAULTS.mem_used}'
+\toption temp_warn '${ALERT_DEFAULTS.temp_warn}'
+\toption temp_crit '${ALERT_DEFAULTS.temp_crit}'
+\toption uncounted_share '${ALERT_DEFAULTS.uncounted_share}'
+`;
+
+				if (writefile(PATH, body) == null)
+					return { ok: false, created: false, error: '写文件失败' };
+
+				return { ok: true, created: true };
+			}
+			catch (e) {
+				return { ok: false, created: false, error: `${e}` };
 			}
 		}
 	},
