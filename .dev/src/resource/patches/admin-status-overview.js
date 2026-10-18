@@ -270,6 +270,10 @@
 
   let metrics = null;
   let sampleTimer = null;
+  let viewObserver = null;
+  // 当前这份 `#view` 是否已经挂好指标带。观察器靠它判断「首次出现/被重建」，
+  // 从而不会因为自己写 DOM 把回调再次触发。
+  let viewReady = false;
   // 上一次的网口累计字节数与对应的采样时刻，用于算瞬时总速率。
   // 时间戳必须和计数一起存：两次采样之间的真实间隔随定时器抖动，
   // 按固定的 5s 去除会把速率算错。
@@ -444,6 +448,10 @@
   };
 
   // 一个磁贴。value/foot 之后由 updateMetric 填，避免整块重建时丢掉折线。
+  //
+  // 槽位（.shadcn-metric-slot）从一开始就在：折线、进度条都插进它内部，
+  // 磁贴因此在“只有占位”和“已有图形”两种状态下高度一致，数据到达时不会
+  // 把整条指标带撑高、进而把下面的区块推下去。
   function tile(key, icon, label) {
     const box = el("div", "shadcn-metric");
     box.dataset.metric = key;
@@ -455,12 +463,18 @@
     head.appendChild(el("span", null, label));
 
     const val = el("div", "shadcn-metric-value");
+    const slot = el("div", "shadcn-metric-slot");
     const foot = el("div", "shadcn-metric-foot");
 
     box.appendChild(head);
     box.appendChild(val);
+    box.appendChild(slot);
     box.appendChild(foot);
     return box;
+  }
+
+  function slotOf(box) {
+    return box.querySelector(".shadcn-metric-slot");
   }
 
   function setValue(box, text, unit) {
@@ -478,24 +492,29 @@
     if (foot) foot.textContent = text;
   }
 
-  // 折线区域每次重建：路径就是两个字符串，重建比原地改 d 更少出错。
+  // 折线每次重建：路径就是两个字符串，重建比原地改 d 更少出错。
+  // 图形一律放进槽位，槽位本身始终存在，磁贴高度因此不随图形有无而变化。
   function setSpark(box, values) {
-    const old = box.querySelector(".shadcn-spark");
-    const paths = sparkPath(values, 100, 34);
+    const slot = slotOf(box);
+    if (!slot) return;
+
+    const old = slot.querySelector(".shadcn-spark");
     if (old) old.remove();
+
+    const paths = sparkPath(values, 100, 34);
     if (!paths) return;
-    // 插在 foot 之前，视觉上数值与说明之间
-    const foot = box.querySelector(".shadcn-metric-foot");
-    box.insertBefore(svgNode(paths), foot);
+    slot.appendChild(svgNode(paths));
   }
 
   function setMeter(box, pct) {
-    let meter = box.querySelector(".shadcn-meter");
+    const slot = slotOf(box);
+    if (!slot) return;
+
+    let meter = slot.querySelector(".shadcn-meter");
     if (!meter) {
       meter = el("div", "shadcn-meter");
       meter.appendChild(el("span"));
-      const foot = box.querySelector(".shadcn-metric-foot");
-      box.insertBefore(meter, foot);
+      slot.appendChild(meter);
     }
     const fill = meter.firstElementChild;
     if (fill) fill.style.width = Math.max(0, Math.min(100, pct || 0)) + "%";
@@ -511,6 +530,10 @@
   }
 
   // 把页面上的数字搬进磁贴。数据缺失时如实显示 “—”，不留占位假值。
+  //
+  // 磁贴现在在 `#view` 出现的第一刻就插入，那一刻区块里的表格往往还没渲染。
+  // 这种情况下只画骨架、不往折线里塞 null —— 把「尚未就绪」当成一次 0 采样
+  // 会让折线凭空多一个谷底，而那并不是观测到的值。
   function updateMetrics() {
     if (!metrics || !metrics.isConnected) return;
 
@@ -523,6 +546,9 @@
     const loadText = loadCell ? (loadCell.textContent || "").trim() : "";
     const cpuCell = sys["CPU 使用率（%）"];
     const cpuText = cpuCell ? (cpuCell.textContent || "").trim() : "";
+
+    // 系统表还没出来：磁贴先留着标题与占位，等下一轮（观察器或采样）再填。
+    const sysReady = !!uptimeText;
 
     // 运行时间
     const uptime = metrics.querySelector('[data-metric="uptime"]');
@@ -537,7 +563,7 @@
 
     // 负载 + CPU 折线
     const cpuNow = parseFloat(cpuText);
-    push(series.cpu, isFinite(cpuNow) ? cpuNow : null);
+    if (sysReady) push(series.cpu, isFinite(cpuNow) ? cpuNow : null);
 
     const loadBox = metrics.querySelector('[data-metric="load"]');
     if (loadBox) {
@@ -615,23 +641,66 @@
     }
   }
 
-  // 指标带插在第一个区块之前。LuCI 会重建 `#view` 的内容，所以每轮采样前
-  // 都确认一次它还在，而不是假设第一次插进去就一直在。
+  // 指标带插在第一个区块之前。
+  //
+  // 这里不能只靠采样定时器：LuCI 的 `#view` 是异步渲染的，脚本求值时它还不
+  // 存在，于是磁贴只能等下一个 5s 采样周期才出现 —— 用户看到的是「区块先
+  // 出来、卡片过几秒才补上」。
+  //
+  // 但也不能一见到 `#view` 就插：`#view` 先是只含一个 `.spinning` 占位
+  // （「正在载入视图...」），真正的内容随后才替换进来。那时插入的磁贴正处在
+  // 250ms 淡入的起点、opacity 为 0，视觉上仍是一段空白。所以等首个
+  // `.cbi-section` 出现再插，卡片与区块同一帧、同一条淡入曲线浮现。
   function ensureMetrics() {
     const view = document.getElementById("view");
     if (!view) return false;
 
-    if (metrics && metrics.isConnected) return true;
+    // 还没渲染出真实内容：保持等待，不插入空壳
+    if (!view.querySelector(".cbi-section")) return false;
 
+    if (metrics && metrics.parentElement === view) return true;
+
+    // 页面重绘会留下上一轮的节点，优先复用，避免重复插入
     metrics = view.querySelector(".shadcn-metrics") ?? buildMetrics();
     if (!metrics.parentElement) view.insertBefore(metrics, view.firstChild);
 
     return true;
   }
 
+  // 盯着 `#view` 的出现与重建。
+  //
+  // updateMetrics() 自己会写 DOM（数值、折线、进度条），而这里观察的是整份
+  // 文档的 subtree —— 不设闩的话，每次写入都会再触发一次回调，形成自激。
+  // `viewReady` 记住「已经为当前这份 #view 挂好指标带」，只有它从无到有
+  // （#view 首次出现，或被 LuCI 重建）时才继续往下走。
+  function watchView() {
+    if (viewObserver) return;
+
+    viewObserver = new MutationObserver(function () {
+      const view = document.getElementById("view");
+      if (!view) {
+        // #view 被移除：下次重建要重新插入
+        if (metrics && !metrics.isConnected) viewReady = false;
+        return;
+      }
+
+      if (viewReady && metrics && metrics.parentElement === view) return;
+
+      if (ensureMetrics()) {
+        viewReady = true;
+        updateMetrics();
+      }
+    });
+
+    viewObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
   // 一轮采样：先确保磁贴在页面上，再更新数字。
   function sampleTick() {
-    if (ensureMetrics()) updateMetrics();
+    if (ensureMetrics()) {
+      viewReady = true;
+      updateMetrics();
+    }
   }
 
   function startSampling() {
@@ -936,6 +1005,9 @@
 
   function mount() {
     watchTable();
+    // 先挂观察器，再补一次直接检查：`#view` 若已在页面上（路由跳转回来），
+    // 立刻就有卡片；若还没渲染，观察器会在它出现的同一刻插入。
+    watchView();
     sampleTick();
     startSampling();
     document.addEventListener("keydown", onKey);
@@ -944,6 +1016,10 @@
 
   function unmount() {
     document.removeEventListener("click", onClick);
+    if (viewObserver) {
+      viewObserver.disconnect();
+      viewObserver = null;
+    }
     if (enrichObserver) {
       enrichObserver.disconnect();
       enrichObserver = null;
@@ -958,6 +1034,7 @@
       metrics.remove();
       metrics = null;
     }
+    viewReady = false;
     series.cpu.length = 0;
     series.wan.length = 0;
     lastIfBytes = null;

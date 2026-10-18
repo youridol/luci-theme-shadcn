@@ -40,6 +40,17 @@ The stock Overview page is a single column of `cbi-section`s, each a plain label
 
 The patch CSS also reflows the page: `#view` becomes a responsive grid, `.network-status-table` and `#status_leases` take the full row, and the key/value tables are tightened. Two device-specific traps live there: `.shadcn-metrics` **must** carry `grid-column: 1 / -1` (without it the band is treated as one grid cell, the four tiles collapse into a 2×2 and every section below shifts), and the port cards need `width: 100% !important` because LuCI sizes them with inline `width:100px`.
 
+### The band has to appear _with_ the sections, not after them
+
+Two separate traps here, both found by measuring instead of looking:
+
+- **`#view` is not the render.** LuCI first paints `#view` holding only a `.spinning` placeholder ("正在载入视图...") and replaces it with the real sections afterwards. The band used to be inserted by the 5 s sample ticker only, so it showed up seconds after the content. It is now driven by a `MutationObserver` on `#view` (`watchView()`), gated on the first `.cbi-section` existing — waiting for `#view` alone inserts the band against the placeholder, where it sits at opacity 0 for the whole 250 ms fade and still reads as a blank area. Measured after the change: band and first section land in the same frame (`band - section = 0 ms`).
+- **The band must not change height when the numbers arrive.** The tiles first render with `—` and only get numbers, sparklines and the meter a few hundred ms later. Letting that grow the box pushed every section down once (a 0.038 layout shift). Each tile therefore carries a fixed `.shadcn-metric-slot` (34 px) from creation and every graphic is inserted inside it; measured band height is 135 px both while the tiles are still `—` and after they are filled, and all four tiles stay equal.
+
+The observer needs a re-entrancy latch: `updateMetrics()` writes DOM while observing the whole document's subtree, so the callback would retrigger forever. `viewReady` records whether the current `#view` already has its band and is cleared when the view is removed.
+
+The remaining layout shift on this page comes from LuCI's own sections (端口状态 filling its port grid, 内存 swapping a placeholder row for the two progress bars). It happens before the band is inserted and is not caused by the patch.
+
 **A host drawer.** The Overview page renders `#status_leases` with each host as plain text. The drawer makes the host name and the IPv4 cell open a right-hand slide-over listing that host's live connections (13 columns: app, protocol, line, external address, domain, source port, destination, destination port, up/down rate, cumulative up/down, state).
 
 Data comes from the theme's own rpcd object (`root/usr/share/rpcd/ucode/shadcn.uc` + `root/usr/share/ucode/shadcn/conntrack.uc`, ACL in `root/usr/share/rpcd/acl.d/shadcn.json`), **not** from `luci-app-trafficctl` — that package only offers per-host totals. The backend parses `/proc/net/nf_conntrack`, fingerprints the app by destination port, resolves names through dnsmasq, and computes rates as byte deltas between two samples.

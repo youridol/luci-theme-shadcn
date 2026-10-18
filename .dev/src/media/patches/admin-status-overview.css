@@ -318,6 +318,11 @@ html.shadcn-drawer-lock body {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  /* 高度在填充数据前后保持一致。磁贴先以“标题 + 占位”出现，几百毫秒后才有
+     折线与真实数值；如果高度随内容长出来，整条指标带会在数据到达时把下面的
+     所有区块往下推一次（实测一次 0.038 的布局偏移）。这里按最终形态留足：
+     标题行 + 数值行 + 折线区 + 说明行。 */
+  min-height: 8.25rem;
   padding: 14px 16px 12px;
   background: var(--card);
   border: 1px solid var(--border);
@@ -390,6 +395,25 @@ html.shadcn-drawer-lock body {
   height: 34px;
   margin-top: 2px;
   overflow: visible;
+}
+
+/* 图形槽位：首帧磁贴只有标题与占位，几百毫秒后才长出折线/进度条。槽位固定
+   占住 34px，图形的有无不再改变磁贴高度，也就不会在数据到达时把下面所有
+   区块推下去一次。 */
+.shadcn-metric-slot {
+  display: block;
+  height: 34px;
+  margin-top: 2px;
+}
+
+.shadcn-metric-slot > .shadcn-spark {
+  height: 100%;
+  margin-top: 0;
+}
+
+/* 内存磁贴用条而不是折线：条比槽位矮，按槽位居中，视觉上与其他磁贴对齐。 */
+.shadcn-metric-slot > .shadcn-meter {
+  margin-top: 14px;
 }
 
 .shadcn-spark path.shadcn-spark-line {
