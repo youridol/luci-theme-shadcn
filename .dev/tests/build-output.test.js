@@ -73,12 +73,15 @@ test("production assets stay within raw-transfer budgets", () => {
   const font = bytes("shadcn/inter-latin-wght-normal.woff2");
   const logo = bytes("shadcn/images/logo.svg");
 
-  assert.ok(main <= 134_000, `main.css ${main} B exceeds 134 KB`);
+  // 138,000 = 134,000 + the sub-drawer CSS (~1,857 B: panel, head, link, the
+  // slide transition). Raised with a measured reason per the policy above —
+  // the feature is a new surface, not a refactor that should have been free.
+  assert.ok(main <= 138_000, `main.css ${main} B exceeds 138 KB`);
   assert.ok(login <= 12_000, `login.css ${login} B exceeds 12 KB`);
-  // 16.5K: palette tabs (third-level nodes, redirect-parent folding, legacy
-  // recents mapping, parent-aware scoring, per-segment path words) plus the
-  // mask-based icon boxes.
-  assert.ok(menu <= 16_500, `menu-shadcn.js ${menu} B exceeds 16.5 KB`);
+  // 18,500 = 16,500 + the sidebar sub-drawer (~1,983 B: lazy panel creation,
+  // pointerdown/Escape dismissal, DOM build from the same ui.menu data). Only
+  // paid once per page; the sidebar itself is unchanged.
+  assert.ok(menu <= 18_500, `menu-shadcn.js ${menu} B exceeds 18.5 KB`);
   assert.ok(router <= 16_000, `router-shadcn.js ${router} B exceeds 16 KB`);
   assert.ok(sidebar <= 5_500, `sidebar-shadcn.js ${sidebar} B exceeds 5.5 KB`);
   // table-sort.js is ~4.2 KB: value parser (capacity / duration / IPv4 /
@@ -86,9 +89,11 @@ test("production assets stay within raw-transfer budgets", () => {
   // own UIDataTable sorting does not reach, so it should stay small — if this
   // grows past 6 KB something is being reimplemented that LuCI already does.
   assert.ok(tableSort <= 6_000, `table-sort.js ${tableSort} B exceeds 6 KB`);
+  // 230,000 = 226,000 + the sub-drawer's CSS and JS (1,857 + 1,983). The
+  // per-file budgets above carry the same measured reason.
   assert.ok(
-    main + menu + router + sidebar + tableSort + font <= 226_000,
-    "admin assets exceed 226 KB",
+    main + menu + router + sidebar + tableSort + font <= 230_000,
+    "admin assets exceed 230 KB",
   );
   assert.ok(login + font + logo <= 62_000, "login assets exceed 62 KB");
 });

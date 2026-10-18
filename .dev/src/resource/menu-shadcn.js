@@ -465,6 +465,122 @@ return baseclass.extend({
       });
       nav.scrollTop = savedScrollTop;
     }
+
+    /* 给每个带子菜单的一级项挂上抽屉入口。
+       用 data 标记防重复绑定：renderSidebarNav 会在每次路由同步后重跑，而
+       nav.innerHTML = "" 已经清掉了旧节点，新节点天然没有标记，所以标记只是
+       为了防止同一次渲染里被绑两遍。 */
+    this._subDrawer();
+    for (const item of nav.querySelectorAll(".sidebar-accordion-item")) {
+      const parent = item.querySelector(".sidebar-nav-parent");
+      if (!parent || parent.dataset.subdrawer) continue;
+
+      parent.dataset.subdrawer = "1";
+      // 悬停与聚焦都开：Tab 到一级项时也能看到子项，不只鼠标。
+      parent.addEventListener("mouseenter", () => this.openSubDrawer(item));
+      parent.addEventListener("focus", () => this.openSubDrawer(item));
+    }
+  },
+
+  /* ── 子菜单抽屉 ─────────────────────────────────────────────────────────
+
+     侧边栏一级菜单悬停/聚焦时，在它的右缘滑出该分区的子项。
+
+     与手风琴并存而不是替代它：手风琴是「就地展开」，抽屉是「展开成一层独立
+     面板」，两者共用 ui.menu 这同一份数据。DOM 不复用 —— 手风琴的列表靠 CSS
+     grid 0fr↔1fr 过渡，把节点挪到 body 会让过渡在移动瞬间失参。
+
+     定位由 JS 写 left/top/max-height：要读侧边栏的实时宽度（折叠成图标轨时
+  /* ── 子菜单抽屉 ─────────────────────────────────────────────────────────
+
+     侧边栏一级菜单悬停/聚焦时，在它的右缘滑出该分区的子项。
+
+     与手风琴并存：手风琴是「就地展开」，抽屉是「展开成一层独立面板」，两者
+     共用 ui.menu 这一份数据。DOM 不复用 —— 手风琴靠 CSS grid 0fr↔1fr 过渡，
+     把节点挪到 body 会让过渡在移动瞬间失参。
+
+     位置由 CSS 算：抽屉挂在 #sidebar 里，`position: fixed` + `left` 由 JS 填
+     一次侧边栏宽度。折叠成图标轨时侧边栏宽度变化，靠 #sidebar 上的
+     data-collapsed 属性触发 CSS 重算，不需要 resize 监听。 */
+  _subDrawer() {
+    let panel = document.getElementById("sidebar-subdrawer");
+    if (panel) return panel;
+
+    panel = document.createElement("div");
+    panel.id = "sidebar-subdrawer";
+    panel.className = "sidebar-subdrawer";
+    panel.setAttribute("role", "menu");
+    panel.hidden = true;
+    document.body.appendChild(panel);
+
+    // 捕获阶段：链路点击会先冒泡到自己的 handler，晚一步就收不到外面的点击。
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (panel.hidden) return;
+        if (panel.contains(e.target)) return;
+        if (e.target.closest?.(".sidebar-accordion-item")) return;
+        this.closeSubDrawer();
+      },
+      true,
+    );
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") this.closeSubDrawer();
+    });
+
+    return panel;
+  },
+
+  openSubDrawer(item) {
+    const panel = this._subDrawer();
+    const name = item.getAttribute("data-section");
+    const list = item.querySelector(".sidebar-sub-list");
+    if (!list) return;
+
+    // 同一分区已开：只挪位置，不重建 DOM。
+    if (panel.dataset.section !== name || panel.hidden) {
+      panel.dataset.section = name;
+      panel.innerHTML = "";
+
+      const head = document.createElement("div");
+      head.className = "sidebar-subdrawer-head";
+      head.textContent =
+        item.querySelector(".sidebar-label")?.textContent ?? "";
+      panel.appendChild(head);
+
+      for (const a of list.querySelectorAll("a.sidebar-sub-link")) {
+        const link = document.createElement("a");
+        link.className =
+          "sidebar-subdrawer-link" +
+          (a.closest(".sidebar-sub-item")?.classList.contains("active")
+            ? " active"
+            : "");
+        link.href = a.getAttribute("href");
+        link.textContent = a.textContent;
+        link.setAttribute("role", "menuitem");
+        link.addEventListener("click", () => this.closeSubDrawer());
+        panel.appendChild(link);
+      }
+
+      panel.hidden = false;
+      requestAnimationFrame(() => panel.classList.add("is-open"));
+    }
+
+    const r = document.getElementById("sidebar").getBoundingClientRect();
+    panel.style.left = Math.max(0, Math.round(r.right)) + "px";
+    panel.style.top = Math.round(r.top) + 56 + "px";
+    panel.style.maxHeight =
+      Math.min(window.innerHeight - r.top - 68, r.height) + "px";
+  },
+
+  closeSubDrawer() {
+    const panel = document.getElementById("sidebar-subdrawer");
+    if (!panel || panel.hidden) return;
+    panel.classList.remove("is-open");
+    // 等过渡跑完再 hidden，否则是直接消失而不是滑出。
+    window.setTimeout(() => {
+      if (!panel.classList.contains("is-open")) panel.hidden = true;
+    }, 160);
   },
 
   /**

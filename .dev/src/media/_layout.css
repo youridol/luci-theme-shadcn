@@ -215,6 +215,49 @@ html[data-sidebar-collapsed="true"] #sidebar {
   @apply text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground block rounded-md px-2 py-1.5 text-sm no-underline [transition:color_.15s,background-color_.15s,border-color_.15s];
 }
 
+/* ── 子菜单抽屉（侧边栏右缘滑出） ──────────────────────────────────────
+
+   一级菜单悬停/聚焦时，在侧边栏右侧展开该分区的子项。
+
+   定位由 JS 写（要读侧边栏的实时宽度，折叠成图标轨时宽度会变，纯 CSS 做不到）。
+   这里只负责外观与滑入动画 —— 用 transform + opacity，不用 width/margin，
+   后者触发重排，而侧边栏是 flex 的一部分，重排会带着整页内容抖一下。
+
+   注意 bg-popover + text-foreground：tokens 里只有 --popover 底色，没有
+   popover-foreground 这个工具类，写它会直接让构建失败。 */
+.sidebar-subdrawer {
+  @apply border-border bg-popover text-foreground fixed z-40 flex min-w-40 flex-col overflow-y-auto rounded-lg border p-1.5 shadow-lg;
+
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity 0.15s var(--ease-out),
+    transform 0.15s var(--ease-out);
+
+  &.is-open {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  &[hidden] {
+    @apply hidden;
+  }
+}
+
+/* 分区名：抽屉里没有手风琴的缩进层级，靠一条细线与第一条分开。 */
+.sidebar-subdrawer-head {
+  @apply text-muted-foreground mb-0.5 border-b px-2 pt-1 pb-1.5 text-xs font-semibold;
+  border-color: var(--border);
+}
+
+.sidebar-subdrawer-link {
+  @apply text-foreground hover:bg-muted block rounded-md px-2 py-1.5 text-sm no-underline [transition:background-color_.15s,color_.15s];
+
+  &.active {
+    @apply bg-muted font-medium;
+  }
+}
+
 /* ── Collapsed hover popover ──────────────────────────────────────── */
 
 .sidebar-collapsed-popover {
