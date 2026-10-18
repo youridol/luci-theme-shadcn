@@ -52,6 +52,21 @@ export function meminfo() {
 	return out;
 }
 
+// /proc/uptime：第一列是开机以来的秒数，第二列是所有核空闲秒数之和。
+//
+// 只需要第一列。读不到就返回 null，由前端显示「—」而**不是** 0 —— 0 秒会
+// 被读成「刚重启」，那是另一种意思。
+export function uptime() {
+	const text = readfile('/proc/uptime');
+
+	if (text == null)
+		return null;
+
+	const m = match(text, /^([0-9]+)/);
+
+	return m != null ? +m[1] : null;
+}
+
 // /proc/loadavg：前三数是 1/5/15 分钟负载，第四个是 "running/total"。
 export function loadavg() {
 	const text = readfile('/proc/loadavg');
@@ -332,6 +347,88 @@ export function conntrack() {
 	};
 }
 
+// 系统信息：主机名、内核、发行版、架构、CPU 型号。
+//
+// 这些都是**静态**的（除非重刷固件），而 caps() 每次快路径都会被调用，
+// 所以读一次就缓存在模块作用域里。ucode 的模块是进程内单例，rpcd 长期存活，
+// 因此这份缓存的有效期就是 rpcd 的寿命 —— 对「固件版本」这类数据来说足够。
+//
+// 全部走 /proc 与 /etc/*_release，不 fork 命令：uname 要 fork，而这里每个
+// 字段都有等价的文件。
+let BOARD_CACHE = null;
+
+export function board() {
+	if (BOARD_CACHE != null)
+		return BOARD_CACHE;
+
+	const release = {};
+
+	const text = readfile('/etc/openwrt_release');
+
+	if (text != null) {
+		for (let line in split(text, '\n')) {
+			const m = match(line, /^([A-Z_]+)='([^']*)'/);
+
+			if (m != null)
+				release[m[1]] = m[2];
+		}
+	}
+
+	// /proc/cpuinfo 的键名按优先级找：x86 用 "model name"，ARM 用
+	// "Processor"/"model"。
+	//
+	// **顺序不能合并成一条交替正则**：x86 的 cpuinfo 里同时有
+	// `model : 55`（CPU 型号编号）和 `model name : Intel(R) … N2930`，
+	// 交替写法会先撞上 `model`，把型号名读成 "55"（真机上就是这样）。
+	// 所以按优先级逐个找，找到就停。
+	//
+	// 逐行扫，不用多行正则：ucode 的正则不认 `m` 标志，也不认 `(?:…)`
+	// 非捕获组，后者报 "Repetition not preceded by valid expression"，而报错
+	// 会连带让整个 caps() 失败 —— 表现为 ubus 返回 Unknown error，看板后端
+	// 数据全没。
+	const cpuinfo = readfile('/proc/cpuinfo') ?? '';
+	const CPU_KEYS = ['model name', 'Processor', 'model', 'Model'];
+	let cpuModel = null;
+
+	for (let key in CPU_KEYS) {
+		if (cpuModel != null)
+			break;
+
+		for (let line in split(cpuinfo, '\n')) {
+			// 按第一个冒号切开，两边各自 trim。不靠 substr/length 数偏移：
+			// 键与值之间是 tab 加若干空格，手算偏移容易错位（实测读成了
+			// 空字符串）。
+			const at = index(line, ':');
+
+			if (at < 0)
+				continue;
+
+			if (trim(substr(line, 0, at)) != key)
+				continue;
+
+			const value = trim(substr(line, at + 1));
+
+			// 纯数字的是型号编号，不是型号名（x86 的 `model : 55`）。
+			if (value != '' && match(value, /^[0-9]+$/) == null) {
+				cpuModel = value;
+				break;
+			}
+		}
+	}
+
+	BOARD_CACHE = {
+		hostname: trim(readfile('/proc/sys/kernel/hostname') ?? '') || null,
+		kernel: trim(readfile('/proc/sys/kernel/osrelease') ?? '') || null,
+		cpu: cpuModel,
+		distribution: release.DISTRIB_ID ?? null,
+		version: release.DISTRIB_RELEASE ?? null,
+		target: release.DISTRIB_TARGET ?? null,
+		arch: release.DISTRIB_ARCH ?? null,
+	};
+
+	return BOARD_CACHE;
+}
+
 // 对外：一次能力探测。前端据此决定画哪些卡，而不是自己猜。
 //
 // cpus 也在这里回报：负载告警的判据是「1 分钟负载 > 核数」，而前端拿不到
@@ -357,6 +454,8 @@ export function caps() {
 		// 每核一项，长度即核数；读不到时如实给 0。
 		cpus: length(cpu != null ? cpu.per : []),
 		ports: ports,
+		// 静态系统信息（主机名/内核/发行版/架构/CPU），已缓存。
+		board: board(),
 	};
 }
 
@@ -373,6 +472,9 @@ export function fastSample() {
 	return {
 		cpu: cpuTimes(),
 		load: loadavg(),
+		// 运行时长：运维判断「这次重启是不是刚发生」的第一依据，也解释了
+		// 为什么回看历史从某个时刻起才有数据。
+		uptime: uptime(),
 		mem: (totalKb != null && availKb != null)
 			? {
 				total: totalKb * 1024,

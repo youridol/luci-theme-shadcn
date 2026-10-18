@@ -18,10 +18,13 @@
 
 - **Sidebar layout**: Collapsible sidebar with accordion sub-menus and mobile drawer.
 - **Fast, silky navigation**: On supported browsers, switching pages only updates the content instead of reloading the whole page, so moving between pages feels seamless and loads much faster (see the [router doc](.dev/docs/router.md)). This no-reload page-switching took cues from [luci-theme-footstrap](https://github.com/VizzleTF/luci-theme-footstrap).
-- **Dark / Light mode**: Built-in toggle, preference remembered automatically, flash-free restore on load.
+- **Dark mode only**: A single dark scheme, applied before paint so there is no flash. There is no light mode and no toggle — the design is built around one scheme.
+- **Operations dashboard**: The Overview page becomes a live dashboard — status tiles, per-line state, CPU/memory/storage, traffic charts, top hosts and protocol split — with an anomaly banner and one-click diagnostics. Alert thresholds are editable at _System → Dashboard Alerts_.
 - **Command palette (⌘K)**: Search and jump to any page from the topbar.
 - **shadcn/ui design**: Clean, modern look, following its dashboard layout.
 - **Modern stack**: Fast to load, smooth to navigate, with carefully chosen typography and icons.
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed between versions.
 
 ## Preview
 

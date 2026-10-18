@@ -815,6 +815,20 @@
     return (Math.round(v * 10) / 10).toString() + "%";
   }
 
+  // 秒数 → 「3 天 5 小时」这类可读时长。
+  //
+  // 只保留两级：路由器上「3 天 5 小时 12 分」里的分钟没有决策价值，反而让
+  // 一行文字变长后在磁贴里被省略号截断。
+  function dashDuration(sec) {
+    if (sec == null || !isFinite(sec) || sec < 0) return "—";
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    if (d > 0) return d + " 天 " + h + " 小时";
+    if (h > 0) return h + " 小时 " + m + " 分";
+    return m + " 分";
+  }
+
   function dashClock(epochSec) {
     if (epochSec == null || !isFinite(epochSec)) return "—";
     const d = new Date(epochSec * 1000);
@@ -1049,11 +1063,15 @@
     net.body.appendChild(lines.card);
     root.appendChild(net.wrap);
 
-    const res = dashSection("res", "资源与运行", "CPU · 内存 · 存储");
+    const res = dashSection("res", "资源与运行", "CPU · 内存 · 存储 · 系统");
     const cpu = dashCard("CPU", "cpu");
     res.body.appendChild(cpu.card);
     const mem = dashCard("内存与存储", "mem");
     res.body.appendChild(mem.card);
+    // 系统信息：主机名、固件、内核、架构、CPU 型号。这些是静态的，后端读
+    // 一次就缓存（probe.uc 的 board()），所以放在这里不增加每分钟开销。
+    const sys = dashCard("系统信息", "sys");
+    res.body.appendChild(sys.card);
     root.appendChild(res.wrap);
 
     const flow = dashSection("flow", "流量", "速率 · 排行 · 分布");
@@ -1563,10 +1581,55 @@
           load.appendChild(dashEl("span", "shadcn-dash-muted", "1 分钟负载"));
           memBody.appendChild(load);
         }
+
+        // 运行时长：判断「刚重启过没有」的第一依据，也解释了回看历史为什么
+        // 从某个时刻才有数据。读不到时显示「—」，不显示 0（0 秒 = 刚重启，
+        // 那是另一种意思）。
+        const up = dashEl("div", "shadcn-dash-metric-row");
+        up.appendChild(dashEl("strong", null, dashDuration(fast.uptime)));
+        up.appendChild(dashEl("span", "shadcn-dash-muted", "运行时长"));
+        memBody.appendChild(up);
       } else {
         memBody.appendChild(
           dashEl("p", "shadcn-dash-empty", "读取内存信息失败"),
         );
+      }
+    }
+
+    // 系统信息卡：内容来自 caps.board（后端读一次即缓存）。
+    //
+    // 缺字段就跳过那一行，而不是显示空的「—」占位：这份数据只用于识别
+    // 「这台机器是什么」，没有缺失某一行也需要提示的意义。
+    const sysBody = dashBoard.querySelector(
+      '[data-card="sys"] .shadcn-dash-card-body',
+    );
+    if (sysBody) {
+      sysBody.textContent = "";
+      const b = dashCaps && dashCaps.board;
+
+      if (!b) {
+        sysBody.appendChild(dashEl("p", "shadcn-dash-empty", "系统信息不可用"));
+      } else {
+        const rows = [
+          ["主机名", b.hostname],
+          [
+            "固件",
+            b.distribution && b.version
+              ? b.distribution + " " + b.version
+              : null,
+          ],
+          ["内核", b.kernel],
+          ["架构", b.target || b.arch],
+          ["处理器", b.cpu],
+        ];
+
+        for (const [label, value] of rows) {
+          if (!value) continue;
+          const row = dashEl("div", "shadcn-dash-metric-row");
+          row.appendChild(dashEl("strong", null, value));
+          row.appendChild(dashEl("span", "shadcn-dash-muted", label));
+          sysBody.appendChild(row);
+        }
       }
     }
   }
