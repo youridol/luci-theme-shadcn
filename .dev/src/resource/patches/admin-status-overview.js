@@ -866,8 +866,12 @@
         dashSetValue(wanTile, "未识别", "");
         dashSetFoot(wanTile, "找不到 WAN 接口");
       } else {
+        /* rates 为 null = 后端这一轮还没有可比的基准。两种情况：
+           · 刚重启且采样器也没跑过（history 为空）→ 下一秒就有了；
+           · 采样器的点太旧（>180 s）→ 拿它算「实时」会失真，后端主动放弃。
+           两种都不是「读取失败」，说清楚免得用户以为接口坏了。 */
         dashSetValue(wanTile, "—", "");
-        dashSetFoot(wanTile, "读取网口失败");
+        dashSetFoot(wanTile, "等待首轮采样");
       }
       dashDraw(wanTile, function (slot) {
         ShadcnCharts.sparkline(slot, dashSeries.down.slice(-60), {
@@ -977,7 +981,23 @@
         }
       }
       dashSetValue(rateTile, any ? dashRate(down) : "—", any ? "↓" : "");
-      dashSetFoot(rateTile, any ? "↑ " + dashRate(up) : "待下一轮采样");
+      /* baselineAge > 0 表示后端刚重启，本轮速率是拿采样器里 N 秒前的点算
+         出来的，不是「刚刚这一秒」的瞬时值。不标出来会让人以为速率突然变了
+         一个量级。只有一轮如此，下一秒就恢复正常基准。 */
+      if (!any) {
+        dashSetFoot(rateTile, "待下一轮采样");
+      } else if (fast.baselineAge > 0) {
+        dashSetFoot(
+          rateTile,
+          "↑ " +
+            dashRate(up) +
+            " · 基准 " +
+            Math.round(fast.baselineAge) +
+            " 秒前",
+        );
+      } else {
+        dashSetFoot(rateTile, "↑ " + dashRate(up));
+      }
       dashDraw(rateTile, function (slot) {
         ShadcnCharts.sparkline(slot, dashSeries.down.slice(-60), {
           h: 30,
@@ -1012,7 +1032,10 @@
 
     const rates = fast && fast.net;
     if (!rates) {
-      body.appendChild(dashEl("p", "shadcn-dash-empty", "读取网口失败"));
+      // 同 WAN 磁贴：没有基准不等于接口坏了。
+      body.appendChild(
+        dashEl("p", "shadcn-dash-empty", "等待首轮采样（约 1 秒）"),
+      );
       return;
     }
 
@@ -1266,7 +1289,9 @@
           );
         }
       } else {
-        portBody.appendChild(dashEl("p", "shadcn-dash-empty", "读取网口失败"));
+        portBody.appendChild(
+          dashEl("p", "shadcn-dash-empty", "等待首轮采样（约 1 秒）"),
+        );
       }
     }
 

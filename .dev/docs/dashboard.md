@@ -211,6 +211,7 @@ CSS 前缀统一 `shadcn-dash-`。
 1. **无 JS**：原生概览区块照常显示。隐藏动作只在脚本确实接管成功之后执行 —— 这条保证脚本未运行或被拦截时整个概览页仍然可用。
 2. **RPC 失败**：保留上一帧画面，顶部出现「数据已过期 N 秒」并标红。不闪空，不把错误画成 0。
 3. **单个指标不可用**：卡片显示「不可用 · 具体原因」（无传感器 / 无外部包 / 权限不足），卡片不消失、位置不跳动。
+4. **差分类指标没有基准**：速率与 CPU 使用率都要两轮采样才能算。缺基准时显示「等待首轮采样（约 1 秒）」，而不是「读取失败」—— 后者会让人以为接口坏了。后端在 rpcd 重启后会先从采样器的 tmpfs 回看里取最近一点当基准（≤ 180 秒），所以实际上只有「采样器也没跑过」这一种情况会看到这句提示，且下一秒就恢复。这一轮算出的速率是拿 N 秒前的值平均出来的，所以磁贴脚注会标「基准 N 秒前」，一轮之后自动消失。
 
 ## 与在线主机抽屉的关系
 
@@ -304,6 +305,9 @@ CSS 前缀统一 `shadcn-dash-`。
 - **`ucode -c file.uc` 会把 `export` 报成语法错误**：模块文件要在被 `require()` 时才合法，`-c` 只适合单文件脚本。验证模块的正确方式是真的 `import` 它并调用。
 - **`uloop` 模块不保证存在**：这台设备的 ucode 构建 import 它时报 `Unable to resolve path for module 'uloop'`，所以采样器的等待用 `system('sleep N')`。代价是每分钟 fork 一个 `/bin/sh`，只适用于 60 秒这种粒度。
 - **重启 `rpcd` 会让浏览器会话失效**：此后所有 rpcd 调用（含 `session/get`）都返回 `-32002 Access denied`，很容易误判成 ACL 配错。先去查会话授权（`session login` 的返回里直接带 `acls.access-group`），确认无误就重新登录。
+- **差分类指标的状态只在 rpcd 进程内存里**：`lastFast` 是模块级单例，rpcd 每次重启（换配置、装包、崩溃重启、开机）都清零，于是**重启后第一个请求必然**拿不到网口速率与 CPU 使用率 —— 前端原来显示「读取网口失败」，看起来就是这个看板时不时冒一个错。真机上 `ubus call shadcn dashboard '{"sections":"fast"}'` 配合 `/etc/init.d/rpcd restart` 可稳定复现。修法是退回采样器写进 tmpfs 的最后一点当基准（最多 180 秒旧，跨重启仍在），间隔用 epoch 差值而不是单调时钟；CPU 无法这样恢复，因为 `/proc/stat` 的累计值没有落盘，只能等下一轮。
+- **采样器 history 的 `t` 是 epoch 秒，`fastSample` 的 `at` 是单调时钟秒**：两者不能直接相减。混用会得到一个荒谬的间隔，算出来的「速率」看着像真数据。
+- **`epoch()` 不是 ucode 标准库函数**：它是 `sampler.uc` 里自己写的局部函数，`import { epoch } from 'fs'` 会报 `Module does not export epoch`。要墙钟秒用 core 的 `clock()`（不带参数）。
 - **带 `preserveAspectRatio` 的 SVG 没有固有高度**：只给 `width: 100%` 会让它按容器宽度撑成正方形（温度仪表真机上曾长到 179px 而槽位只有 34px）。容器必须显式给高度。
 - **ucode 不支持 `for...of`**：`for (const c of arr)` 是**语法错误**，整个模块在加载期就失败。而 rpcd 只表现为「`ubus list` 里没有这个对象」，看起来像装错了或 ACL 有问题。用 `for (x in arr)`。
 - **`arr.filter(fn)` 这种数组方法也不可用**：ucode 的 `filter` 是全局函数，写成 `filter(arr, fn)`。

@@ -272,6 +272,53 @@ function loadHistory() {
 		points: parsed.points,
 	};
 }
+// 从采样器落下的回看里取「最后一个点」作为差分基准。
+//
+// 为什么需要它：`lastFast` 只活在 rpcd 进程内存里。rpcd 每次重启（换配置、
+// 装包、崩溃重启、开机）它都是 null，于是**重启后的第一个请求必然**拿不到
+// 网口速率与 CPU 使用率 —— 前端就显示「读取网口失败」，用户看到的是这个
+// 看板时不时闪一下错误。真机上用 /etc/init.d/rpcd restart 稳定复现。
+//
+// 采样器每分钟把各网口的累计字节写进 tmpfs，那份数据跨 rpcd 重启仍然存在，
+// 正好可以当基准。
+//
+// 两点必须注意：
+//   · 回看点的 t 是 epoch 秒，而 fastSample 的 at 是单调时钟秒。两者不能
+//     直接相减，所以这里返回 { net, age }，age 是「这个点距今多少秒」，
+//     由调用方换算成可用的 dt。
+//   · 基准太旧就没有意义：拿 10 分钟前的累计值去算「现在的速率」，得到的
+//     是那 10 分钟的平均值，与磁贴上写的「实时」不符。所以超过
+//     BASELINE_MAX_AGE 就放弃，宁可这一轮显示「—」。
+const BASELINE_MAX_AGE = 180;
+
+function baselineFromHistory() {
+	const hist = loadHistory();
+
+	if (!hist.available || length(hist.points) == 0)
+		return null;
+
+	const last = hist.points[length(hist.points) - 1];
+
+	if (type(last) != 'object' || type(last.net) != 'object')
+		return null;
+
+	if (last.t == null)
+		return null;
+
+	// epoch 秒。clock() 在 ucode 里是 core 函数（不用 import）：带 true 是
+	// 单调时钟，不带参数是墙钟秒，与采样器写进 history 的 t 同源。
+	const c = clock();
+
+	const now = (type(c) == 'array') ? c[0] : +(c ?? 0);
+
+	const age = now - last.t;
+
+	if (!(age >= 0) || age > BASELINE_MAX_AGE)
+		return null;
+
+	return { net: last.net, age: age };
+}
+
 
 // 慢路径：解析整张连接表并汇总。这条路径约 740 ms，只能慢周期调用。
 //
@@ -854,18 +901,42 @@ const methods = {
 				const sample = fastSample();
 
 				// CPU 与速率都是差分，必须有上一轮才有意义。
-				// 首轮如实返回 null，前端显示“—”，不伪造 0。
-				if (lastFast != null) {
+				//
+				// lastFast 只活在进程内存里，rpcd 重启后它就是 null —— 那时
+				// 网口速率与 CPU 都是 null，前端显示「读取网口失败」。真机上
+				// 每次重启都能复现，看起来就是看板时不时冒一个错。
+				//
+				// 所以先退回采样器落在 tmpfs 里的最后一个点当基准（跨重启
+				// 仍在，最多 180 秒旧）。CPU 无法这样恢复：/proc/stat 的累计
+				// 值没有落盘，只能等下一轮。
+				let base = lastFast;
+				let dt = base != null ? sample.at - base.at : 0;
+
+				if (base == null) {
+					const fallback = baselineFromHistory();
+
+					if (fallback != null) {
+						base = { net: fallback.net };
+						// history 的 t 是 epoch 秒，与单调时钟无关，所以间隔
+						// 直接用 age（秒），不能拿 sample.at 去减。
+						dt = fallback.age;
+					}
+				}
+
+				if (base != null) {
 					out.fast = {
-						cpu: cpuUsage(lastFast.cpu, sample.cpu),
-						cpuPer: cpuUsagePer(lastFast.cpu, sample.cpu),
-						net: netRates(lastFast.net, sample.net, sample.at - lastFast.at),
+						cpu: lastFast != null ? cpuUsage(lastFast.cpu, sample.cpu) : null,
+						cpuPer: lastFast != null ? cpuUsagePer(lastFast.cpu, sample.cpu) : null,
+						net: netRates(base.net, sample.net, dt),
 						load: sample.load,
 						uptime: sample.uptime,
 						mem: sample.mem,
 						temp: sample.temp,
 						conntrack: sample.conntrack,
 						sampled: true,
+						// 本轮速率是拿多久之前的基准算的（秒）。0 表示就是上一
+						// 轮；大于 0 表示刚从重启中恢复，前端可据此标注估算值。
+						baselineAge: lastFast != null ? 0 : dt,
 					};
 				}
 				else {
