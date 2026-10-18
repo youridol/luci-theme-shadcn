@@ -521,15 +521,24 @@ html.shadcn-drawer-lock body {
 /* ── 顶部状态条 ─────────────────────────────────────────────────────── */
 
 .shadcn-dash-bar {
+  /* sticky 在滚动容器里是相对**padding box** 定位的：top: 0 让工具条停在
+     内边距内侧，于是 #maincontent 的 padding-top（24px）在它上方留出一条
+     缝隙，滚动时下面的内容从缝里穿过去，看起来就是「冻结行中间有间隙」。
+
+     用负的 top 把那圈内边距吃掉，并且上下各补同样的内边距 —— 否则贴到边上
+     时文字会顶住分隔线。宽屏 24、窄屏 16 与 #maincontent 的 p-6/max-md:p-4
+     一一对应。 */
+  --dash-bar-inset: 24px;
+
   position: sticky;
-  top: 0;
+  top: calc(-1 * var(--dash-bar-inset));
   z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 8px 0;
+  padding: var(--dash-bar-inset) 0 8px;
   background: var(--background);
   border-bottom: 1px solid var(--border);
 }
@@ -770,6 +779,40 @@ html.shadcn-drawer-lock body {
   align-items: start;
 }
 
+/* 宽屏下三个分区的列数写死，不用 auto-fit。
+
+   auto-fit 会把用不满的轨道折叠成 0px，而 grid-template-columns 的实测值
+   里那一条仍然存在：资源区（3 张卡）量到 "417px 417px 417px 0px"，线路区
+   （1 张 span-2 的卡）量到 "632px 632px 0px 0px"。看着没坏，但那一列是
+   实打实的多余结构 —— 卡片的百分比宽度、后续改列距、以及「为什么三张卡
+   只有三列还要算四列」这类判断都会被它带偏。
+
+   写死之后每个分区都是「卡片数与列数配平」：
+     线路 1 列（那张卡本来就占满整行）
+     资源 3 列（CPU / 内存与存储 / 系统信息 各一列）
+     流量 4 列（四张卡各 span 2，两两一行） */
+@media (min-width: 1280px) {
+  #shadcn-dash-net .shadcn-dash-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 线路区只有一张卡、网格是单列，但那张卡带着 .shadcn-dash-span-2。
+     span 2 在单列网格里会**强制**造出第二条轨道（实测
+     grid-template-columns 变成 "1264px 0px"），那条 0px 的列纯粹是 span
+     逼出来的。单列里它本来就该占满，所以显式取消。 */
+  #shadcn-dash-net .shadcn-dash-card {
+    grid-column: span 1;
+  }
+
+  #shadcn-dash-res .shadcn-dash-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #shadcn-dash-flow .shadcn-dash-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 .shadcn-dash-span-2 {
   grid-column: span 2;
 }
@@ -784,6 +827,66 @@ html.shadcn-drawer-lock body {
    降成 1 列，所以这里不需要再写断点。 */
 #shadcn-dash-flow .shadcn-dash-card {
   grid-column: span 2;
+}
+
+/* 流量区四张卡等高，做法与资源区一致（见 #shadcn-dash-res 那组）。
+   实测原来的高度是 248 / 169 / 541 / 188 —— Top 主机因为不限行数撑到
+   541px，另外三张在下面空出一大片。现在 Top 主机限 6 行，四张等高。
+
+   注意 stretch 只作用于**同一行**：2×2 布局里第一行两张齐、第二行两张齐，
+   两行之间仍有高差（实测 420 对 381）。要四张完全一样高，得显式给两行
+   指定同一个高度，所以用 grid-auto-rows 定死行高。
+
+   行高取实测值：定 352px（22rem）时 ports 的内容要 406px、hosts 要 367px，
+   两者都会溢出被裁。408px（25.5rem）刚好放下 ports 那条最高的内容，同时
+   hours / protos 的余量由各自的可伸缩元素吃掉。 */
+#shadcn-dash-flow .shadcn-dash-grid {
+  align-items: stretch;
+  grid-auto-rows: 25.5rem;
+}
+
+#shadcn-dash-flow .shadcn-dash-card {
+  display: flex;
+  flex-direction: column;
+}
+
+#shadcn-dash-flow .shadcn-dash-card-body {
+  flex: 1;
+}
+
+/* 端口流量：两条火花线拉高吃掉余量（viewBox 等比铺开，不失真）。
+   必须设上限：不加限制时 flex 会把每条拉到 120px（原 34px），两条就吃掉
+   240px，端口列表被挤到底边 —— 实测截图里图表占了半张卡。56px 是「看得出
+   波形走向、又不喧宾夺主」的折中。
+
+   选择器前面加 #shadcn-dash-flow 是为了**提高特异性**而不是加语义：通用的
+   `.shadcn-dash-card-body > .shadcn-dash-chart { max-height: 120px }` 写在
+   文件更后面，两边特异性相同时后者胜出，实测 max-height 会退回 120px。 */
+#shadcn-dash-flow
+  [data-card="ports"]
+  .shadcn-dash-card-body
+  > .shadcn-dash-chart {
+  flex: 1;
+  height: auto;
+  min-height: 34px;
+  max-height: 56px;
+}
+
+/* 今日流量按小时：柱子同样可以加高，上限与资源区一致，避免一根柱子占满卡片。 */
+[data-card="hours"] .shadcn-dash-card-body > .shadcn-dash-chart {
+  flex: 1;
+  height: auto;
+  max-height: 160px;
+}
+
+/* 协议分布：环形图本身固定尺寸，余量给到图例，让环形居中而不是顶到上面。 */
+[data-card="protos"] .shadcn-dash-card-body {
+  justify-content: space-around;
+}
+
+/* Top 主机：行数已限 6 行，余量均分到行间。 */
+[data-card="hosts"] .shadcn-dash-card-body {
+  justify-content: space-between;
 }
 
 /* ── 卡片 ───────────────────────────────────────────────────────────── */
@@ -1345,12 +1448,29 @@ html.shadcn-drawer-lock body {
 
   /* 单列堆叠时「等高」没有意义：每张卡独占一行，等高只会给内容少的那张
      平白加一截空白。显式退回按内容定高。 */
-  #shadcn-dash-res .shadcn-dash-grid {
+  #shadcn-dash-res .shadcn-dash-grid,
+  #shadcn-dash-flow .shadcn-dash-grid {
     align-items: start;
   }
 
-  #shadcn-dash-res .shadcn-dash-card {
+  #shadcn-dash-res .shadcn-dash-card,
+  #shadcn-dash-flow .shadcn-dash-card {
     display: block;
+  }
+
+  #shadcn-dash-flow
+    [data-card="ports"]
+    .shadcn-dash-card-body
+    > .shadcn-dash-chart,
+  [data-card="hours"] .shadcn-dash-card-body > .shadcn-dash-chart {
+    flex: initial;
+    height: 34px;
+    max-height: 96px;
+  }
+
+  [data-card="protos"] .shadcn-dash-card-body,
+  [data-card="hosts"] .shadcn-dash-card-body {
+    justify-content: flex-start;
   }
 
   [data-card="cpu"] .shadcn-dash-card-body > .shadcn-dash-chart {
@@ -1394,7 +1514,11 @@ html.shadcn-drawer-lock body {
   }
 
   .shadcn-dash-bar {
-    padding: 6px 0;
+    /* #maincontent 在窄屏是 p-4（16px），这里的内边距要跟它一致，负 top
+       才刚好把缝隙吃掉。 */
+    --dash-bar-inset: 16px;
+
+    padding: var(--dash-bar-inset) 0 6px;
     gap: 8px;
   }
 

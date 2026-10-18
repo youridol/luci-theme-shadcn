@@ -520,7 +520,11 @@
       opt.value = String(preset);
       select.appendChild(opt);
     }
+    // 状态行读的是 dashIntervalMs，下拉框显示的是它自己的 value。两者必须
+    // 在这里一起设定 —— 只设 select.value 会让状态行沿用上一个会话残留的
+    // dashIntervalMs，出现「下拉框 1 秒、状态行 2 秒」的矛盾。
     select.value = String(DASH_DEFAULT_FAST);
+    dashIntervalMs = DASH_DEFAULT_FAST * 1000;
     select.addEventListener("change", function () {
       dashIntervalMs = (parseInt(select.value, 10) || DASH_DEFAULT_FAST) * 1000;
       dashRestartFast();
@@ -1340,7 +1344,13 @@
       const conns = slow && slow.conns;
       if (conns && conns.available && conns.compact.hosts.length) {
         const max = conns.compact.hosts[0].b || 1;
-        for (const h of conns.compact.hosts) {
+        /* 只画前 6 名。
+           原来不限条数，实测排到 10 行 × 42px = 420px，把这张卡撑到 541px，
+           同一行的另外三张（248 / 169 / 188）就只能靠顶部对齐、下面空一大片。
+           6 行既够看出「谁在占带宽」，又能让四张卡等高。
+           完整的连接明细在抽屉里（点主机名打开），不靠这张卡列全。 */
+        const TOP_HOSTS = 6;
+        for (const h of conns.compact.hosts.slice(0, TOP_HOSTS)) {
           const row = dashEl("div", "shadcn-dash-rankrow");
 
           // 下钻进那台主机的实时连接：复用抽屉，只是换一个触发点。
@@ -1358,6 +1368,18 @@
           ShadcnCharts.rankBar(track, h.b, max);
           row.appendChild(track);
           hostBody.appendChild(row);
+        }
+
+        // 截断要说明，否则「只有 6 台」会被当成全部在线终端数。
+        const total = conns.compact.hosts.length;
+        if (total > TOP_HOSTS) {
+          hostBody.appendChild(
+            dashEl(
+              "p",
+              "shadcn-dash-empty",
+              "另有 " + (total - TOP_HOSTS) + " 台未显示",
+            ),
+          );
         }
       } else {
         hostBody.appendChild(
@@ -1477,8 +1499,22 @@
           if (select) select.value = String(next);
         }
         dashRestartFast();
+        // 间隔变了要立刻把状态行重绘一次，否则文案还写着旧值 ——
+        // 原来这里漏了这句，实测出现过「下拉框 1 秒、状态行 2 秒、实际 2.5 秒」
+        // 三个数字互相矛盾。
+        dashRenderStatus();
       } else if (elapsed <= dashDegradeThreshold() && dashDegraded) {
+        // 恢复时要把间隔改回默认档，否则「降速」是单向的：标记清了、状态行
+        // 显示回「实时 · 每 N 秒」，但 N 永远停在降速后的值，这个会话再也不会
+        // 回到 1 秒。
         dashDegraded = false;
+        if (dashIntervalMs !== DASH_DEFAULT_FAST * 1000) {
+          dashIntervalMs = DASH_DEFAULT_FAST * 1000;
+          const select = dashBoard.querySelector('[data-role="interval"]');
+          if (select) select.value = String(DASH_DEFAULT_FAST);
+          dashRestartFast();
+          dashRenderStatus();
+        }
       }
 
       dashRenderOverview(fast, dashSlow);
