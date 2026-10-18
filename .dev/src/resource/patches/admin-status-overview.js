@@ -37,7 +37,9 @@
 
   let pollTimer = null;
   let drawer = null;
-  let current = { host: null, interval: DEFAULT_INTERVAL, seq: 0 };
+  // lastRows 缓存上一轮的连接数组：点表头排序时要用它立刻重排，不能等下一次
+  // 轮询（1 秒后）才有反应 —— 那时用户已经以为点击没生效了。
+  let current = { host: null, interval: DEFAULT_INTERVAL, seq: 0, rows: [] };
   let enrichObserver = null;
   let enrichTimer = null;
   // 目的地址 -> 域名。反查结果按地址缓存，避免每轮刷新都重算。
@@ -2007,6 +2009,56 @@
     ["连接状态", "state"],
   ];
 
+  /* 抽屉表格的排序状态。
+
+     与全站表格（table-sort.js）不同，这里的表格是我们自己渲染的，行数据是
+     一组对象而不是 DOM 文本，所以排序直接在原始数值上做 —— 按「上行速率」
+     排时用的是字节数，不是「1.2 MB/s」这个字符串（按文本排会把 900 KB/s 排到
+     1.2 MB/s 前面）。
+
+     默认按累计下行降序：打开抽屉最先想知道的是「这台机器在跟谁大量传数据」。 */
+  let drawerSort = { key: "totalDown", dir: "desc" };
+
+  // 数值列：这些列的原始值要参与数值比较，不能按字符串比。
+  const NUMERIC_KEYS = {
+    sport: true,
+    dport: true,
+    up: true,
+    down: true,
+    totalUp: true,
+    totalDown: true,
+  };
+
+  /* 取排序用的键。
+     数值列拿到的是 c.up / c.down / c.bytes_out 这类原始数字；文本列用字符串。
+     做小写处理让「TCP」和「tcp」排在一起，不至于大小写各占一段。 */
+  function sortValue(c, key) {
+    if (key === "up") return c.up ?? 0;
+    if (key === "down") return c.down ?? 0;
+    if (key === "totalUp") return c.bytes_out ?? 0;
+    if (key === "totalDown") return c.bytes_in ?? 0;
+    if (key === "sport") return Number(c.sport) || 0;
+    if (key === "dport") return Number(c.dport) || 0;
+    return String(c[key] ?? "").toLowerCase();
+  }
+
+  function sortConnections(list) {
+    const key = drawerSort.key;
+    const dir = drawerSort.dir === "asc" ? 1 : -1;
+    const numeric = NUMERIC_KEYS[key] === true;
+
+    // 复制一份再排：调用方还在用原数组做域名反查。
+    return list.slice().sort(function (a, b) {
+      const va = sortValue(a, key);
+      const vb = sortValue(b, key);
+
+      if (numeric) return (va - vb) * dir;
+
+      // 文本列用 localeCompare：中文字典序比 charCode 更符合预期。
+      return va.localeCompare(vb, "zh-Hans-CN") * dir;
+    });
+  }
+
   function buildDrawer() {
     const root = el("div", "shadcn-drawer-root");
     root.innerHTML =
@@ -2036,11 +2088,44 @@
       "  </div>" +
       "</aside>";
 
+    /* 表头：# + 各列。每一列都可点，点了按该列排序，再点切换升降序。
+
+       序号列不可排序（它的顺序就是当前排序的结果），所以只有文字、不带箭头。
+
+       点击用事件委托绑在 thead 上，不用逐个 th 绑：抽屉会被反复重绘数据，
+       但表头只在建的时候生成一次，所以逐个绑其实也安全 —— 之所以仍用委托，
+       是为了让「点哪一列」的判断集中在一处，避免 th 上的箭头与状态不同步。 */
     const theadRow = root.querySelector("thead tr");
-    for (const [label] of COLUMNS) {
-      const th = el("th", null, label);
+
+    const seqTh = el("th", "shadcn-drawer-seq-head", "#");
+    seqTh.setAttribute("aria-label", "序号");
+    theadRow.appendChild(seqTh);
+
+    for (const [label, key] of COLUMNS) {
+      const th = el("th", "shadcn-drawer-sortable", label);
+      th.dataset.sortKey = key;
+      th.setAttribute("role", "columnheader");
+      th.setAttribute("aria-sort", "none");
       theadRow.appendChild(th);
     }
+
+    theadRow.addEventListener("click", function (ev) {
+      const th = ev.target.closest("th[data-sort-key]");
+      if (!th) return;
+
+      const key = th.dataset.sortKey;
+      const same = drawerSort.key === key;
+
+      // 同一列再点：升 ↔ 降；换列：从降序开始（大数据在前更常用）。
+      drawerSort = {
+        key: key,
+        dir: same ? (drawerSort.dir === "asc" ? "desc" : "asc") : "desc",
+      };
+
+      syncSortIndicators();
+      // 立刻用当前数据重排，不等下一次轮询。
+      repaintRows();
+    });
 
     const select = root.querySelector("[data-interval]");
     for (const s of INTERVALS) {
@@ -2059,11 +2144,30 @@
     });
 
     document.body.appendChild(root);
+
+    /* 建完先把箭头画出来：默认是「累计下行 · 降序」，不初始化的话第一次打开
+       抽屉看不出当前按什么排。
+
+       syncSortIndicators 读的是模块级的 drawer，而此刻调用方还没拿到返回值
+       （openDrawer 里是 `drawer = buildDrawer()`，赋值发生在返回之后），所以
+       这里必须先把 root 挂到 drawer 上，否则函数会提前 return。 */
+    const prevDrawer = drawer;
+    drawer = root;
+    syncSortIndicators();
+    drawer = prevDrawer;
+
     return root;
   }
 
-  function rowFor(c) {
+  function rowFor(c, index) {
     const tr = el("tr");
+
+    /* 序号列。它显示的是**当前排序之后**的位次，不是连接的原始顺序 —— 这样
+       「第 1 行」永远等于「排在最前面的那条」，与表头的排序方向一致。
+       宽度固定、右对齐、次要色，不抢数据的注意力。 */
+    const seqTd = el("td", "shadcn-drawer-seq", String(index + 1));
+    tr.appendChild(seqTd);
+
     const isLocal = c.src === current.host;
     // 本机发起的连接：对端是 dst；外部连入的：对端是 src
     const peer = isLocal ? c.dst : c.src;
@@ -2138,6 +2242,48 @@
     if (!data.sampled) parts.push("首次采样，速率待下一轮");
     meta.textContent = parts.join(" · ");
   }
+  /* 表头箭头与实际排序状态同步。
+
+     每个可排序列都写 aria-sort（none / ascending / descending），当前列再加
+     data-sort-direction 让 CSS 画出 ▲ / ▼。aria-sort 是给读屏用的，data 属性
+     是给样式用的 —— 两者都写，避免只有视觉或只有语义。 */
+  function syncSortIndicators() {
+    if (!drawer) return;
+
+    for (const th of drawer.querySelectorAll("th[data-sort-key]")) {
+      const active = th.dataset.sortKey === drawerSort.key;
+
+      th.removeAttribute("data-sort-direction");
+      th.setAttribute(
+        "aria-sort",
+        active
+          ? drawerSort.dir === "asc"
+            ? "ascending"
+            : "descending"
+          : "none",
+      );
+
+      if (active) th.dataset.sortDirection = drawerSort.dir;
+    }
+  }
+
+  // 用缓存的连接数组按当前排序重绘 tbody。点表头时立刻调用。
+  function repaintRows() {
+    if (!drawer) return;
+
+    const tbody = drawer.querySelector("tbody");
+    if (!tbody) return;
+
+    const rows = sortConnections(current.rows || []);
+    const frag = document.createDocumentFragment();
+    rows.forEach(function (c, i) {
+      frag.appendChild(rowFor(c, i));
+    });
+
+    tbody.textContent = "";
+    tbody.appendChild(frag);
+  }
+
   async function tick() {
     if (!drawer || !current.host) return;
     const seq = ++current.seq;
@@ -2196,10 +2342,12 @@
     if (data.lan) lanPrefix = data.lan;
 
     // 先把表格画出来，再异步补域名：反查不该拖慢首屏，且失败也不影响列表。
-    const frag = document.createDocumentFragment();
-    for (const c of list) frag.appendChild(rowFor(c));
-    tbody.textContent = "";
-    tbody.appendChild(frag);
+    //
+    // 存一份原始数组给 repaintRows 用：点表头要在本地立刻重排，不能等下一轮
+    // 轮询。排序也在本地做，所以不在 tick 里排一次再存 —— 直接存原始顺序，
+    // 排多少遍都是幂等的。
+    current.rows = list;
+    repaintRows();
 
     // 对端地址才是需要反查的（本机地址已在标题里）
     const addrs = [];
@@ -2214,10 +2362,14 @@
       resolveDomains(addrs).then(function () {
         // 期间切换了主机就不要重绘
         if (current.host !== hostAtStart || !drawer) return;
-        tbody.textContent = "";
-        const again = document.createDocumentFragment();
-        for (const c of list) again.appendChild(rowFor(c));
-        tbody.appendChild(again);
+
+        /* 用 repaintRows 而不是自己再拼一遍 tbody。
+           这里原来写的是「按 list 的原始顺序重画」，有两个问题：
+             · 序号会变成 NaN —— rowFor 的第二个参数是索引，这里漏传了；
+             · 更严重的是它会把用户刚点的排序冲掉（域名回来大约几百毫秒，
+               正好在用户点完表头之后），表现为「点了排序，一会儿又乱回去」。
+           repaintRows 读 current.rows + drawerSort，两个问题一起消失。 */
+        repaintRows();
       });
     }
   }

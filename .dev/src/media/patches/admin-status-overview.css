@@ -237,6 +237,56 @@ html.shadcn-drawer-lock body {
   border-bottom: 1px solid var(--border);
 }
 
+/* 抽屉表头可排序。
+   参考站（shadcn-admin 的 tasks 页）的表头是「文字 + 一个下拉箭头」的可点按钮；
+   这里用同一套语义：可点的列加手型与 hover 底色，当前排序列显示 ▲ / ▼。
+
+   箭头用 after 内容而不是再插一个 svg：表头是 sticky 的，多一个节点会让列宽
+   在切换排序时抖一下（箭头出现/消失改变宽度）。给固定宽度占位就不抖了。 */
+.shadcn-drawer-table thead th.shadcn-drawer-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s;
+
+  &:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+
+  &::after {
+    display: inline-block;
+    width: 0.75em;
+    margin-left: 2px;
+    content: "";
+    opacity: 0.5;
+  }
+
+  &[data-sort-direction="asc"]::after {
+    content: "▲";
+    opacity: 1;
+  }
+
+  &[data-sort-direction="desc"]::after {
+    content: "▼";
+    opacity: 1;
+  }
+}
+
+/* 序号列：窄、右对齐、次要色。
+   它是排序结果的位次，不参与排序 —— 所以表头不带箭头、也不可点。 */
+.shadcn-drawer-seq-head,
+.shadcn-drawer-seq {
+  width: 1%;
+  padding-right: 4px !important;
+  text-align: right;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-drawer-seq {
+  font-size: 0.6875rem;
+}
+
 .shadcn-drawer-table tbody tr:hover td {
   background: var(--accent);
 }
