@@ -190,6 +190,40 @@ export function cpuUsagePer(prev, cur) {
 	return out;
 }
 
+// 各网口的**协商速率**（链路层握手速度，不是当前吞吐）。
+//
+// 数据源 /sys/class/net/<if>/speed，单位 Mb/s，读一个文件即可，不用 fork
+// ethtool —— 这个值要随快路径每秒返回，fork 的代价比读文件高两个数量级。
+//
+// 三点必须注意：
+//   · 读不到（接口 down、虚拟接口、读写失败）时该值是 -EINVAL，写进文件里
+//     就是 "-1"。这里一律返回 null，让前端显示「—」而不是「-1 Mb/s」。
+//   · pppoe-wan / ifb* 这类虚拟接口没有物理速率，本来就该是 null；它们的
+//     「速率」应当看底层承载（eth1）。前端会跳过这些名字。
+//   · 只在速率变化时才有意义，但它秒级不变，所以不进差分计算 —— 与 netDev
+//     分开，避免污染累计字节的历史点。
+export function linkSpeeds() {
+	const out = {};
+	const dirs = lsdir('/sys/class/net') ?? [];
+
+	for (let name in dirs) {
+		const raw = readfile(`/sys/class/net/${name}/speed`);
+
+		if (raw == null)
+			continue;
+
+		const v = +trim(raw);
+
+		// -1 / 0 / 非数字都当「没有协商速率」，不要伪装成 0 Mb/s。
+		if (!(v > 0))
+			continue;
+
+		out[name] = v;
+	}
+
+	return out;
+}
+
 // 各网口累计收发字节。/proc/net/dev 每行形如：
 //   eth0: 1234567 890 0 0 0 0 0 0 7654321 321 0 0 0 0 0 0
 // 冒号前是接口名；冒号后第 1 个是收字节、第 9 个是发字节。
@@ -557,6 +591,9 @@ export function caps() {
 		board: board(),
 		// WAN 拨号信息（v4/v6 地址、前缀、DNS、在线时长）。10 秒 TTL。
 		wan: wanInfo(),
+		// 各网口协商速率（Mb/s）。链路速度不会秒级变化，5 秒缓存一次即可，
+		// 免得每秒都去 lsdir + readfile 一遍。
+		speeds: linkSpeeds(),
 	};
 }
 

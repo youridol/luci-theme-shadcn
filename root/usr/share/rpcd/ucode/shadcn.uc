@@ -34,6 +34,8 @@ import { readAndSummarize, compact } from 'shadcn.aggregate';
 
 // 回看文件由 sampler.uc 写入（procd 托管），见 adr/0005。
 const HISTORY_PATH = '/tmp/shadcn-dashboard/history.json';
+// 采样器写下的丢包率（内网/外网各一份，交替更新）。与 HISTORY_PATH 同目录。
+const LOSS_PATH = '/tmp/shadcn-dashboard/loss.json';
 
 // rpcd 在独立进程里持有本对象，这份缓存随进程存活；连接消失后下一轮
 // 调用会顺手覆盖，因此不会随连接数无限增长。
@@ -226,6 +228,67 @@ function netRates(prev, cur, dt) {
 	}
 
 	return out;
+}
+
+// 读采样器测出的丢包率。
+//
+// 采样器每分钟只测一个目标（内网/外网交替），所以这里拿到的两份数据新鲜度
+// 不同，各自带 at 时间戳，前端据此显示「N 秒前」，不假装是同一时刻的。
+//
+// 缺文件、损坏、结构不对都返回 available:false 并说明原因 —— 丢包率是最容易
+// 被误读成「网络有问题」的指标，宁可不显示，也不能把读不到画成 0%。
+function loadLoss() {
+	const raw = readfile(LOSS_PATH);
+
+	if (raw == null)
+		return {
+			available: false,
+			reason: '丢包率尚未采样（采样器未运行或刚重启）',
+			inner: null,
+			outer: null,
+		};
+
+	let parsed = null;
+
+	try {
+		parsed = json(raw);
+	}
+	catch (e) {
+		return {
+			available: false,
+			reason: '丢包率文件损坏',
+			inner: null,
+			outer: null,
+		};
+	}
+
+	if (type(parsed) != 'object')
+		return {
+			available: false,
+			reason: '丢包率数据格式异常',
+			inner: null,
+			outer: null,
+		};
+
+	const pick = function (side) {
+		const s = parsed[side];
+
+		if (type(s) != 'object' || s.loss == null)
+			return null;
+
+		return {
+			loss: s.loss,
+			rtt: s.rtt,
+			at: s.at,
+			target: s.target,
+		};
+	};
+
+	return {
+		available: true,
+		inner: pick('inner'),
+		outer: pick('outer'),
+	};
 }
 
 // 读采样器写下的回看。
@@ -972,6 +1035,8 @@ const methods = {
 					history: state,
 					// 连接表汇总：这是那 740 ms 的部分。
 					conns: slowSummary(),
+					// 丢包率：采样器后台测的，这里只读现成结果。
+					loss: loadLoss(),
 				};
 			}
 

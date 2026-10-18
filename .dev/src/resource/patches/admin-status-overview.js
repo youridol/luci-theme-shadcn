@@ -383,6 +383,30 @@
     return p(d.getHours()) + ":" + p(d.getMinutes());
   }
 
+  /* 「N 秒前 / N 分钟前」。
+     用于丢包率这类**存量读数**：采样器每分钟测一次，直接把值摆出来会让人
+     以为它是当前的瞬时丢包。标出时龄比标出绝对时刻更好读（不用心算）。 */
+  function dashAgo(epochSec) {
+    if (epochSec == null || !isFinite(epochSec)) return "";
+
+    const age = Math.max(0, Math.floor(Date.now() / 1000 - epochSec));
+
+    if (age < 60) return age + " 秒前";
+    if (age < 3600) return Math.floor(age / 60) + " 分钟前";
+    return Math.floor(age / 3600) + " 小时前";
+  }
+
+  /* 协商速率 → 「100 Mb/s」「1 Gb/s」。
+     千兆写 1 Gb/s 而不是 1000 Mb/s，和网卡/交换机的标注习惯一致，也短一半。 */
+  function dashLinkSpeed(mbps) {
+    if (mbps == null || !isFinite(mbps) || mbps <= 0) return "—";
+    if (mbps >= 1000) {
+      const g = mbps / 1000;
+      return (Number.isInteger(g) ? g : g.toFixed(1)) + " Gb/s";
+    }
+    return mbps + " Mb/s";
+  }
+
   const dashSeries = {
     cpu: [],
     up: [],
@@ -677,16 +701,21 @@
     diagnoseOut.hidden = true;
     root.appendChild(diagnoseOut);
 
-    // 概况带（六个磁贴）先构造，但**在「资源与运行」之后**才挂进 DOM：
-    // 磁贴是页面状态的摘要，先看资源组的明细、再对照摘要更顺；这也是
-    // 明确要求的顺序。
+    // 概况带先构造，但**在「资源与运行」之后**才挂进 DOM：磁贴是页面状态的
+    // 摘要，先看资源组的明细、再对照摘要更顺。
     const band = dashEl("div", "shadcn-dash-band");
-    band.appendChild(dashTile("wan", "WAN 状态", "network"));
+
+    /* 磁贴顺序：在线终端 · WAN 状态 · 实时速率 · 连接总数 · 今日总流量。
+       按「出问题先看什么」排：谁在用网 → WAN 通不通 → 现在多快 →
+       一共多少条连接 → 今天累计多少。
+
+       系统温度不再是独立磁贴：它与 CPU 是同一类「机器本身热不热」的信息，
+       已并入 CPU 卡（见 dashRenderResources），磁贴因此从 6 个减到 5 个。 */
     band.appendChild(dashTile("hosts", "在线终端", "user"));
+    band.appendChild(dashTile("wan", "WAN 状态", "network"));
+    band.appendChild(dashTile("rate", "实时速率", "gauge"));
     band.appendChild(dashTile("conns", "连接总数", "activity"));
     band.appendChild(dashTile("today", "今日总流量", "chart-bar"));
-    band.appendChild(dashTile("rate", "实时速率", "gauge"));
-    band.appendChild(dashTile("temp", "系统温度", "activity"));
 
     // 顺序：资源与运行 → 概况带 → 线路 → 流量。
     const res = dashSection(
@@ -1104,24 +1133,30 @@
         });
       });
     }
-
-    const tempTile = dashBoard.querySelector('[data-tile="temp"]');
-    if (tempTile) {
-      const t = fast && fast.temp;
-      if (t && t.available) {
-        dashSetValue(tempTile, Math.round(t.max) + " °C", "");
-        dashSetFoot(tempTile, t.readings.length + " 个传感器");
-        dashDraw(tempTile, function (slot) {
-          ShadcnCharts.gauge(slot, t.max, { size: 64, min: 20, max: 100 });
-        });
-      } else {
-        dashSetValue(tempTile, "—", "");
-        dashSetFoot(tempTile, t ? t.reason : "不可用");
-      }
-    }
   }
 
-  function dashRenderLines(fast) {
+  /* 温度与 CPU 合并到同一张卡之后放在这里统一取值。
+
+     为什么合并：温度原本是概况带里一个独立磁贴，但它和 CPU 使用率回答的是
+     同一类问题 ——「这台机器本身累不累、热不热」。分成两处看要跨屏对读，合并
+     后一列就能判断「占用高是不是真的在发热」。磁贴空出来的位置给了其它更常
+     看的摘要（在线终端 / WAN / 速率 / 连接数 / 今日流量）。 */
+  function dashTempText(fast) {
+    const t = fast && fast.temp;
+    if (!t) return { text: null, note: "温度不可用" };
+    if (!t.available) return { text: null, note: t.reason || "温度不可用" };
+
+    return {
+      text: Math.round(t.max) + " °C",
+      note:
+        t.readings && t.readings.length > 1
+          ? t.readings.length + " 个传感器取最高"
+          : "CPU 温度",
+      value: t.max,
+    };
+  }
+
+  function dashRenderLines(fast, slow) {
     const body = dashBoard.querySelector(
       '[data-card="lines"] .shadcn-dash-card-body',
     );
@@ -1161,6 +1196,28 @@
       );
       chip.dataset.tone = live ? "ok" : "muted";
       head.appendChild(chip);
+
+      /* 协商速率：物理链路的握手速度（10 Mb/s ～ 1 Gb/s），不是吞吐。
+         它回答「这根线/这个口是不是只跑到了百兆」，与上面的实时速率是两件事。
+
+         虚拟接口没有物理速率（pppoe-wan、ifb*），后端对它们不返回 —— 这类
+         接口的速率应当看底层承载（eth1），所以这里直接不显示，不留「—」
+         占位，免得让人以为读失败。 */
+      const speeds = dashCaps && dashCaps.speeds;
+      const speed = speeds ? speeds[name] : null;
+      if (speed != null) {
+        const speedChip = dashEl(
+          "span",
+          "shadcn-dash-line-speed",
+          dashLinkSpeed(speed),
+        );
+        // 只有低于 1 Gb/s 才值得注意：这台上游是千兆，掉到 100 通常意味着
+        // 线序/水晶头有问题。用 title 说明，不额外占一列。
+        speedChip.title = "协商速率 " + dashLinkSpeed(speed);
+        if (speed < 1000) speedChip.dataset.tone = "warn";
+        head.appendChild(speedChip);
+      }
+
       row.appendChild(head);
 
       const stats = dashEl("div", "shadcn-dash-line-stats");
@@ -1170,6 +1227,59 @@
 
       body.appendChild(row);
     }
+
+    /* 内外网丢包率附在这张卡的最下方。
+
+       为什么放在线路卡而不是别处：丢包率回答的是「这条线路通得好不好」，
+       与上面每个网口的速率属于同一类判断。它是采样器每分钟测一次的**存量
+       读数**（不是实时差分），所以每项都标出测量时刻，避免被当成当前瞬时值。
+
+       内网探针是 LAN 网关（.1），外网是默认网关 —— 都只测一跳，不引入
+       「国际出口」这类与线路本身无关的因素。 */
+    const loss = dashSlow && dashSlow.loss;
+    const lossBox = dashEl("div", "shadcn-dash-loss");
+    lossBox.appendChild(dashEl("span", "shadcn-dash-loss-title", "丢包率"));
+
+    const sides = [
+      ["内网", loss && loss.inner],
+      ["外网", loss && loss.outer],
+    ];
+
+    for (const [label, rec] of sides) {
+      const cell = dashEl("span", "shadcn-dash-loss-cell");
+      cell.appendChild(dashEl("span", "shadcn-dash-muted", label));
+
+      if (rec && rec.loss != null) {
+        const v = dashEl("strong", null, rec.loss + "%");
+        /* title 里写清探的是谁。
+           内网探针是一台实际在线的 LAN 设备（从 ARP 表里挑的），不是网关 ——
+           没有目标地址的话，「内网 5%」会被理解成整段 LAN 都在丢包。 */
+        v.title =
+          (rec.target ? "目标 " + rec.target + " · " : "") +
+          (rec.rtt != null ? "RTT " + rec.rtt.toFixed(1) + " ms" : "无 RTT") +
+          " · 测于 " +
+          dashAgo(rec.at);
+        // 有丢包才算异常；0% 保持普通前景色，不制造视觉噪声。
+        if (rec.loss > 0) v.dataset.tone = "warn";
+        cell.appendChild(v);
+        cell.appendChild(
+          dashEl("span", "shadcn-dash-loss-when", dashAgo(rec.at)),
+        );
+      } else {
+        cell.appendChild(dashEl("strong", null, "—"));
+        const why =
+          loss && !loss.available && loss.reason
+            ? loss.reason
+            : label === "内网"
+              ? "无在线 LAN 设备可探测"
+              : "等待采样（每分钟测一次）";
+        cell.appendChild(dashEl("span", "shadcn-dash-loss-when", why));
+      }
+
+      lossBox.appendChild(cell);
+    }
+
+    body.appendChild(lossBox);
   }
 
   function dashRenderResources(fast) {
@@ -1179,9 +1289,27 @@
     if (cpuBody) {
       cpuBody.textContent = "";
       if (fast && fast.cpu != null) {
+        /* 第一行放「占用 + 温度」两个读数。
+           温度从概况带并进来（原先是一个独立磁贴），两者放同一行是因为它们
+           回答同一个问题：占用高的时候，机器是不是真的在发热。分两处看要跨屏
+           对读。温度不可用时这一格显示「—」并把原因放进 title，不占额外高度。 */
         const row = dashEl("div", "shadcn-dash-metric-row");
         row.appendChild(dashEl("strong", null, dashPct(fast.cpu)));
         row.appendChild(dashEl("span", "shadcn-dash-muted", "总占用"));
+
+        const temp = dashTempText(fast);
+        const tempCell = dashEl(
+          "span",
+          "shadcn-dash-cpu-temp",
+          temp.text || "—",
+        );
+        tempCell.title = temp.note;
+        // 温度偏高时给一点提示色：只在真的热（≥ 80 °C）时变，平时保持灰，
+        // 避免常温也一片警告色。用 role 而不是写死颜色类，配色仍由 CSS 决定。
+        if (temp.value != null && temp.value >= 80)
+          tempCell.dataset.hot = "true";
+        row.appendChild(tempCell);
+
         cpuBody.appendChild(row);
 
         ShadcnCharts.sparkline(cpuBody, dashSeries.cpu.slice(-60), {
@@ -1203,6 +1331,15 @@
           cpuBody.appendChild(per);
         }
       } else {
+        // CPU 还没有基准时仍然显示温度：温度是瞬时读数，不需要上一轮采样。
+        const temp = dashTempText(fast);
+        if (temp.text) {
+          const row = dashEl("div", "shadcn-dash-metric-row");
+          row.appendChild(dashEl("strong", null, temp.text));
+          row.appendChild(dashEl("span", "shadcn-dash-muted", temp.note));
+          cpuBody.appendChild(row);
+        }
+
         cpuBody.appendChild(
           dashEl(
             "p",
@@ -1686,7 +1823,8 @@
       }
 
       dashRenderOverview(fast, dashSlow);
-      dashRenderLines(fast);
+      // 线路卡要用到 slow 里的丢包率（采样器后台测的存量读数）。
+      dashRenderLines(fast, dashSlow);
       dashRenderResources(fast);
       dashRenderFlow(fast, dashSlow);
       // 告警由后端判定并一起回传（它握有原始数值与 UCI 阈值）；前端只渲染。

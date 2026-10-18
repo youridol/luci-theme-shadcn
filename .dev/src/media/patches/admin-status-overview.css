@@ -951,6 +951,26 @@ html.shadcn-drawer-lock body {
   font-variant-numeric: tabular-nums;
 }
 
+/* CPU 卡里的温度读数。
+   温度从概况带并进 CPU 卡之后放在同一行右端：它和占用率回答同一个问题
+   （机器累不累、热不热），并排读比跨屏对看直观。
+
+   margin-left: auto 把它推到行尾，于是「3% 总占用」左对齐、温度右对齐，
+   中间空白随卡片宽度伸缩 —— 卡片等高时不会像固定间距那样显得松散。
+   平常是次要文字色，≥ 80 °C 时（渲染时打 data-hot）才换前景色，避免常温
+   也一片警告色。 */
+.shadcn-dash-cpu-temp {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+
+  &[data-hot="true"] {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+}
+
 .shadcn-dash-metric-row {
   display: flex;
   align-items: baseline;
@@ -1273,6 +1293,72 @@ html.shadcn-drawer-lock body {
   font-size: 0.75rem;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+}
+
+/* 线路的协商速率（10 Mb/s ～ 1 Gb/s）。
+   与「有流量」那个 chip 并排放在标题行右端：它是链路属性，不是流量读数。
+   千兆时保持次要文字色（正常状态），掉到百兆才用 warn 色提示 —— 这台设备
+   上游是千兆，降速通常意味着线序/水晶头问题，值得一眼看到。 */
+.shadcn-dash-line-speed {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+
+  &[data-tone="warn"] {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+}
+
+/* 内外网丢包率：独占线路卡的一整行，横排两组。
+   必须显式 grid-column: 1/-1 —— 线路卡的 body 是四列 grid，四个网口各占一
+   列；不加这一条的话丢包率会被挤进第五格（实测只剩 241px），里面的「内网 /
+   0% / 35 秒前」被压成竖排。
+
+   每格是「标签 / 数值 / 时龄」一行小字 —— 时必须标时龄，因为这是采样器每分钟
+   测一次的存量读数，不标会被误读成当前瞬时丢包。 */
+.shadcn-dash-loss {
+  grid-column: 1 / -1;
+
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+}
+
+.shadcn-dash-loss-title {
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.shadcn-dash-loss-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+
+  & strong {
+    font-size: 0.875rem;
+    font-weight: 600;
+
+    &[data-tone="warn"] {
+      color: var(--foreground);
+    }
+  }
+}
+
+.shadcn-dash-loss-when {
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── 每核细条 ───────────────────────────────────────────────────────── */
