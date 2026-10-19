@@ -156,26 +156,22 @@ html[data-sidebar-collapsed="true"] #sidebar {
    改由点击弹出右侧抽屉，箭头始终朝右，「往右弹」这个方向感不会变 —— 保留
    旋转会让它转成朝左，反而指错方向。 */
 
-/* Grid 0fr↔1fr accordion with an opacity fade: animates to the content's
-   real height with no JS measurement. The clip sits on the grid container,
-   not the list — an auto-height grid re-resolves a mid-transition Nfr against
-   its own already-shrunk height, so a list clipped at its own box loses rows
-   faster than the space closes. The list keeps its natural height (self-start)
-   so its border-l spans every visible row, and carries no vertical padding:
-   padding would give the 0fr track a floor.
+/* 子列表：在侧边栏里恒为收起，且不带过渡。
 
-   visibility (not display) keeps the links out of the tab order while closed.
+   子项现在只出现在右侧抽屉里。这里不再有「展开」状态 —— 原来那条
+   `[data-open="true"]` 规则会把子列表展开，而写 data-open="true" 的地方有
+   四处（渲染、缓存回放、路由同步、header.ut 预绘制），漏掉任何一处都会让
+   侧边栏在某个时机自己展开。实测症状是「从抽屉选了二级菜单，一级项又向下
+   展开」，因为那次点击触发了路由同步。
 
-   **侧边栏里永不展开。** 子项现在只出现在右侧抽屉里，所以这里不再提供
-   「展开」状态 —— 原来下面那条 `[data-open="true"]` 规则会把子列表展开，
-   而写 data-open="true" 的地方有四处（渲染、缓存回放、路由同步、header.ut
-   预绘制），漏掉任何一处都会让侧边栏在某个时机自己展开。实测症状是「从抽屉
-   选了二级菜单，一级项又向下展开」，因为那次点击触发了路由同步。
+   连过渡也一并去掉：既然永远不展开，grid-template-rows 的 0.2s 动画只会
+   在状态被误设时把「展开再收起」演出来 —— 那正是要消除的观感。去掉之后即使
+   有人写了 data-open="true"，画面也不会有任何变化。
 
-   把规则删掉比在 JS 里逐处防守更可靠，也省掉一个 MutationObserver 的体积。
-   data-open 属性仍保留：恢复逻辑与折叠态的面板还读它。 */
+   用 grid 而不是 display:none 是为了保留列表的 DOM（折叠态的面板与恢复逻辑
+   还读它），同时 visibility 让链接不进 tab 顺序。 */
 .sidebar-accordion-sub {
-  @apply invisible grid grid-rows-[0fr] overflow-hidden opacity-0 [transition:grid-template-rows_.2s_var(--ease-out),opacity_.2s_var(--ease-out),visibility_.2s_var(--ease-out)];
+  @apply invisible grid grid-rows-[0fr] overflow-hidden opacity-0;
 
   > * {
     @apply min-h-0 self-start;

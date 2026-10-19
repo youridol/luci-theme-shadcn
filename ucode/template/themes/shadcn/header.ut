@@ -6,11 +6,43 @@
 
 {%
 	import { getuid, getspnam } from 'luci.core';
-	import { lsdir } from 'fs';
+	import { lsdir, stat } from 'fs';
 
 	const boardinfo = ubus.call('system', 'board') ?? {};
 	const rootsp = getspnam('root');
 	const root_pw_unset = (rootsp && rootsp.pwdp == '');
+
+	/* 资源版本号：取所有静态资源里最新的 mtime。
+
+	   用途是让 ?v= 查询串在资源更新后变化，从而绕过浏览器缓存。原来这里写的是
+	   `{# PKG_VERSION #}` —— 那是 ucode 模板的**注释**语法，渲染出来是空字符串，
+	   于是 data-asset-version="" 、patchAssetUrl() 不加任何版本参数，patch 的
+	   JS/CSS 会一直被浏览器缓存，改了也看不到（表现为「明明修好了，页面上还是
+	   旧行为」）。
+
+	   为什么取「最新的」而不是 main.css 的：开发时经常只换某一个 patch 文件，
+	   此时 main.css 没动，版本号不变，那个 patch 仍会被缓存。取所有候选里的
+	   最大值，任何一个文件更新都会让版本号变化。
+
+	   候选清单是固定的几个入口文件；stat 失败（文件不存在）就跳过，全部失败时
+	   退回空串，等价于原来的行为，不影响页面渲染。 */
+	let asset_version = '';
+	{
+		const stamp_files = [
+			'/www/luci-static/shadcn/main.css',
+			'/www/luci-static/resources/menu-shadcn.js',
+			'/www/luci-static/resources/router-shadcn.js',
+			'/www/luci-static/resources/sidebar-shadcn.js',
+			'/www/luci-static/resources/table-sort.js'
+		];
+		let newest = 0;
+		for (let f in stamp_files) {
+			let st = null;
+			try { st = stat(f); } catch (e) { st = null; }
+			if (st != null && st.mtime > newest) newest = st.mtime;
+		}
+		if (newest > 0) asset_version = '' + newest;
+	}
 
 	const page_segs = length(ctx?.request_path) ? ctx.request_path : (ctx?.path || []);
 	const page = join('-', page_segs);
@@ -60,12 +92,12 @@
 		{% if (blank_page): %}
 		<link rel="stylesheet" href="{{ media }}/login.css">
 		{% else %}
-		<link rel="stylesheet" href="{{ media }}/main.css" data-luci-shell>
+		<link rel="stylesheet" href="{{ media }}/main.css?v={{ asset_version }}" data-luci-shell>
 		{% for (let patch in patch_files): %}
-		<link rel="stylesheet" href="{{ media }}/patches/{{ patch }}.css" data-luci-patch="{{ patch }}">
+		<link rel="stylesheet" href="{{ media }}/patches/{{ patch }}.css?v={{ asset_version }}" data-luci-patch="{{ patch }}">
 		{% endfor %}
 		{% for (let patch in patch_scripts): %}
-		<script defer src="{{ media }}/patches/{{ patch }}.js" data-luci-patch="{{ patch }}"></script>
+		<script defer src="{{ media }}/patches/{{ patch }}.js?v={{ asset_version }}" data-luci-patch="{{ patch }}"></script>
 		{% endfor %}
 		{% endif %}
 		<link rel="icon" href="{{ media }}/images/favicon.svg" type="image/svg+xml">
@@ -82,7 +114,7 @@
 		<script src="{{ resource }}/cbi.js"></script>
 	</head>
 
-	<body class="lang_{{ dispatcher.lang }}" data-page="{{ entityencode(page, true) }}" data-asset-version="{# PKG_VERSION #}"{% if (length(patch_all)): %} data-patches="{{ entityencode(join(' ', patch_all), true) }}"{% endif %}>
+	<body class="lang_{{ dispatcher.lang }}" data-page="{{ entityencode(page, true) }}" data-asset-version="{{ asset_version }}"{% if (length(patch_all)): %} data-patches="{{ entityencode(join(' ', patch_all), true) }}"{% endif %}>
 		{% if (!blank_page): %}
 
 		<div
