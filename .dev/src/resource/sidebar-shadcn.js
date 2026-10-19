@@ -248,6 +248,10 @@ return baseclass.extend({
         this._openAccordionItem(item);
       }
     });
+
+    /* 兜底不在 JS 里做，交给 CSS：_layout.css 把 .sidebar-accordion-sub
+       强制为收起，因此无论谁把 data-open 写成 true，侧边栏都不会展开。
+       这样不必为「纠正属性」额外背一个 MutationObserver 的体积。 */
   },
 
   _openAccordionItem(item) {

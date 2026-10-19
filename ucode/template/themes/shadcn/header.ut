@@ -111,7 +111,7 @@
 					if (!raw) return;
 					var cache = JSON.parse(raw);
 					var sb = document.getElementById('sidebar');
-					if (!sb || !cache || cache.v !== 1 || cache.lang !== document.documentElement.lang) return;
+					if (!sb || !cache || cache.v !== 2 || cache.lang !== document.documentElement.lang) return;
 
 					sb.innerHTML = cache.html;
 					sb.setAttribute('data-shadcn-built', '1');

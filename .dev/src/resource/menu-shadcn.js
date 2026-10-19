@@ -69,7 +69,7 @@ return baseclass.extend({
       sessionStorage.setItem(
         CACHE_KEY,
         JSON.stringify({
-          v: 1,
+          v: 2,
           lang: document.documentElement.lang || "",
           html: sidebar.innerHTML,
           scroll: nav.scrollTop || 0,
@@ -274,19 +274,13 @@ return baseclass.extend({
         if (sub) {
           sub.classList.add("active");
           const acc = best.closest(".sidebar-accordion-item");
-          if (acc) {
-            acc.classList.add("active");
-            if (sidebar.getAttribute("data-collapsed") !== "true") {
-              sidebar
-                .querySelectorAll(".sidebar-accordion-item")
-                .forEach((item) =>
-                  item.setAttribute(
-                    "data-open",
-                    item === acc ? "true" : "false",
-                  ),
-                );
-            }
-          }
+          /* 只标活动分区，不设 data-open。
+
+             这里原来还会把活动分区设成 data-open="true"，于是每次路由同步
+             （点击抽屉里的二级项就是一次路由同步）都会让侧边栏就地展开一段
+             缩进列表 —— 而子项现在只该出现在右侧抽屉里。这正是「从抽屉选了
+             二级菜单，一级项又向下展开」的原因。 */
+          if (acc) acc.classList.add("active");
         } else if (best.classList.contains("sidebar-logout")) {
           best.classList.add("active");
         } else {
