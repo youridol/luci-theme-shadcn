@@ -9,13 +9,24 @@
 /* ── 这个文件为什么长这样 ───────────────────────────────────────────────────
 
    它是通过 L.require('table-sort') 加载的 LuCI 模块，而 LuCI 的 require 期望
-   模块求值后**返回一个构造函数**。直接写 IIFE（返回 undefined）会抛
-   `"table-sort" factory yields invalid constructor`，连带打断同一页后续的脚本
-   —— 实测路由页整页 TypeError 就是这个原因。所以文件以顶层 `return` 收尾，
-   交出一个空构造函数；真正的副作用在文件求值时已经完成。
+   模块求值后**返回一个 baseclass 派生类**。判定在 luci.js 里只有一句：
 
-   顶层 `return` 只有在模块体里才合法，本仓库的构建按 LuCI 模块处理这类文件
-   （对照 sidebar-shadcn.js），打包时不会报错。
+     if (!Class.isSubclass(_class))
+         LuCI.prototype.error('TypeError',
+             '"%s" factory yields invalid constructor', name);
+
+   而 `Class.isSubclass(v)` 的实现是
+   `typeof v === 'function' && v.prototype instanceof Class`。所以**光返回一个
+   函数不够** —— 必须是 baseclass 的派生类。上一版返回裸的
+   `function tableSort() {}`，函数是函数，但 prototype 不继承 baseclass，于是
+   控制台报 `"table-sort" factory yields invalid constructor`，并打断同一页后
+   续的脚本。
+
+   现在改成 `return baseclass.extend({ __init__() { … } })`，与同目录的
+   sidebar-shadcn.js、router-shadcn.js 一致。
+
+   顶层 `return` 只有在模块体里才合法，本仓库的构建按 LuCI 模块处理这类文件，
+   打包时不会报错。
 
    ── 先读这段，避免重造轮子 ────────────────────────────────────────────────
 
@@ -42,7 +53,7 @@
    对这两种表，在表格上方插一个「排序」按钮，点开是「列 + 方向」的列表。
 */
 
-(function () {
+function startTableSort() {
   var DONE_ATTR = "data-shadcn-sortmenu";
 
   // ── 值解析 ──────────────────────────────────────────────────────────────
@@ -390,8 +401,19 @@
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", start);
   else start();
-})();
+}
 
-/* 交出一个空构造函数满足 require 的契约；工作已在 IIFE 里做完。
-   用 function 声明而不是箭头函数：LuCI 侧会以 `new` 的语义对待它。 */
-return function tableSort() {};
+/* 交出一个 baseclass 派生类，而不是裸函数。
+
+   LuCI 的判定是 `Class.isSubclass(v)`，其实现为
+   `typeof v === 'function' && v.prototype instanceof Class`。裸函数通不过这一
+   条，控制台就会报 `"table-sort" factory yields invalid constructor` 并打断
+   同页后续脚本 —— 这就是本文件上一版的真实故障。
+
+   __init__ 里跑副作用，与同目录 sidebar-shadcn.js / router-shadcn.js 的写法
+   一致；本文件不需要实例状态，所以类体是空的。 */
+return baseclass.extend({
+  __init__() {
+    startTableSort();
+  },
+});

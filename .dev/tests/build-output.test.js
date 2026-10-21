@@ -83,7 +83,15 @@ test("production assets stay within raw-transfer budgets", () => {
   // paid once per page; the sidebar itself is unchanged.
   assert.ok(menu <= 18_500, `menu-shadcn.js ${menu} B exceeds 18.5 KB`);
   assert.ok(router <= 16_000, `router-shadcn.js ${router} B exceeds 16 KB`);
-  assert.ok(sidebar <= 5_500, `sidebar-shadcn.js ${sidebar} B exceeds 5.5 KB`);
+  // 7,600 = 5,500 + the hover-expand state machine (~680 B: pointerenter /
+  // pointerleave handlers, the pinned flag, and `_applyCollapsed` writing both
+  // attributes plus the animation opt-out) + the leave-grace path (~1,250 B:
+  // pointer tracking, the 120 ms timer, the geometric "is the pointer on the
+  // sub-drawer" test that stops the rail collapsing out from under an open
+  // drawer, and the drawer's own pointerout so leaving it still schedules the
+  // collapse). It buys the default-collapsed rail and a reachable sub-menu, so
+  // the cost is behaviour rather than a refactor that should have been free.
+  assert.ok(sidebar <= 7_600, `sidebar-shadcn.js ${sidebar} B exceeds 7.6 KB`);
   // table-sort.js is ~4.2 KB: value parser (capacity / duration / IPv4 /
   // status words), the row walk and the sort menu. It only covers tables LuCI's
   // own UIDataTable sorting does not reach, so it should stay small — if this
