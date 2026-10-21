@@ -415,8 +415,14 @@
     const all = [];
     for (const s of list) for (const v of s.values) all.push(v);
     let range = o.range ?? extent(all);
-    // A framed plot is read against zero; only a sparkline may float.
-    if (axis && o.nice !== false) range = { min: 0, max: niceMax(range.max) };
+    /* A framed plot is read against zero; only a sparkline may float.
+       `zero: true` extends that to a sparkline, and it is what keeps an area
+       fill honest: a series that floats on its own min..max maps a 1%–7% CPU
+       signal onto the full box height, so the area path covers the whole plot
+       and the card reads as a solid mountain instead of a shallow wave. With a
+       zero floor the fill's height is proportional to the value. */
+    if ((axis || o.zero === true) && o.nice !== false)
+      range = { min: 0, max: niceMax(range.max) };
 
     const frame = svg({
       viewBox: `0 0 ${w} ${h}`,
@@ -895,6 +901,9 @@
     };
 
     // A hairline track keeps the donut legible when every value is tiny.
+    // `butt` caps, not the segment cap: a round-capped 359.99° track puts two
+    // caps face to face at 12 o'clock and bulges out by half a thickness
+    // (13px on the protocol ring).
     add(frame, "path", {
       d: arc(0, 359.99),
       class: "dash-ring-track",
@@ -1100,9 +1109,19 @@
     const prev = remember(o.key, "rank", [ratio]);
     const from = prev ? prev[0] : 0;
 
+    /* The tween starts from the previous ratio, not from zero.
+
+       `ratio * 100 * t` was used here while `from` was computed and never read,
+       so every refresh shrank the bar to nothing and grew it back — on the slow
+       path that is once a minute, per host, which reads as a flicker rather than
+       as a value changing. Interpolating from `from` makes a change look like a
+       change. */
     const draw = (t) => {
-      const x2 = ratio * 100 * t;
-      set(bar, { x2: n(x2), visibility: x2 > 0.4 ? "visible" : "hidden" });
+      const value2 = (from + (ratio - from) * t) * 100;
+      set(bar, {
+        x2: n(value2),
+        visibility: value2 > 0.4 ? "visible" : "hidden",
+      });
     };
 
     if (!reduceMotion() && from !== ratio) animate(draw);

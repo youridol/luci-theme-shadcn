@@ -50,7 +50,7 @@
 
     &::after {
       content: "×";
-      @apply bg-muted text-muted-foreground hover:text-foreground absolute top-2 right-2 inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-sm font-medium;
+      @apply bg-muted text-muted-foreground hover:text-foreground absolute top-2 right-2 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-sm font-medium;
     }
 
     &.dragging {
@@ -62,7 +62,7 @@
 
     > span,
     > code {
-      @apply pointer-events-none w-full rounded font-mono leading-relaxed;
+      @apply pointer-events-none w-full rounded-sm font-mono leading-relaxed;
     }
   }
 
@@ -78,7 +78,7 @@
     }
 
     > .cbi-button {
-      @apply inline-flex h-6 min-w-6 shrink-0 cursor-pointer items-center justify-center rounded px-2 py-0 text-xs font-medium shadow-none active:scale-95;
+      @apply inline-flex h-6 min-w-6 shrink-0 cursor-pointer items-center justify-center rounded-sm px-2 py-0 text-xs font-medium shadow-none active:scale-95;
     }
   }
 }

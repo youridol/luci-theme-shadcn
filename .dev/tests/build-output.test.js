@@ -97,11 +97,20 @@ test("production assets stay within raw-transfer budgets", () => {
   // own UIDataTable sorting does not reach, so it should stay small — if this
   // grows past 6 KB something is being reimplemented that LuCI already does.
   assert.ok(tableSort <= 6_000, `table-sort.js ${tableSort} B exceeds 6 KB`);
-  // 230,000 = 226,000 + the sub-drawer's CSS and JS (1,857 + 1,983). The
-  // per-file budgets above carry the same measured reason.
+  // 234,000 = 230,000 + the 2026-10 component-consistency pass (main.css
+  // 134,657 → 136,765, +2,108 B). What that bought, measured:
+  //   - focus-visible ring on the whole button family (~330 B): buttons were
+  //     the only keyboard-reachable control in the theme with no focus state;
+  //   - success / info button variants and the destructive-strong pairing
+  //     (~410 B): save and apply used to render as two weights of the same grey;
+  //   - badge icon sizing and the shared tint contract (~260 B);
+  //   - the `:has(> svg | img)` icon inset from the official spec (~350 B).
+  // Every per-file limit above still passes; this is the cross-check that the
+  // total has not drifted silently, so it is raised by the measured amount and
+  // no more.
   assert.ok(
-    main + menu + router + sidebar + tableSort + font <= 230_000,
-    "admin assets exceed 230 KB",
+    main + menu + router + sidebar + tableSort + font <= 234_000,
+    "admin assets exceed 234 KB",
   );
   assert.ok(login + font + logo <= 62_000, "login assets exceed 62 KB");
 });

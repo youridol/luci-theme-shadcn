@@ -2,24 +2,45 @@
    Official Badge: rounded-full, px-2, py-0.5, text-xs, font-medium, gap-1,
    [&>svg]:size-3. default is bg-primary text-primary-foreground, so the plain
    badge is a white pill in dark mode; the semantic variants below keep LuCI's
-   info/warning/success tints. */
+   info/warning/success tints.
+
+   Tint contract, shared with the tooltips and alerts so one semantic colour
+   means one thing everywhere:
+     - block-level surfaces (alert, message)  -> border-*-a30 bg-*-a10 text-*
+     - badges / chips (inline, small)         -> bg-*-a15 text-* (no border)
+     - floating surfaces (tooltip)            -> solid bg-* + *-fg text
+   The foreground is always the semantic token itself, never a second
+   approximation: warning used `--warning-soft-fg` on a tint but `--warning` on
+   a solid fill, so the same warning looked like two different colours
+   depending on where it was rendered. */
 .label {
-  @apply bg-secondary text-secondary-foreground inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+  @apply bg-secondary text-secondary-foreground inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap [transition:color_.15s,background-color_.15s,border-color_.15s];
+
+  /* Official `[&>svg]:size-3`: badge icons are smaller than the text they sit
+     beside, otherwise a 16px glyph dwarfs a 12px label. */
+  > svg,
+  > img,
+  > .shadcn-icon {
+    @apply size-3;
+  }
 
   &.important {
     @apply bg-info-a15 text-info;
   }
   &.warning {
-    @apply bg-warning-a15 text-warning-soft-fg;
+    @apply bg-warning-a15 text-warning;
   }
   &.success {
     @apply bg-success-a15 text-success;
   }
   &.notice {
-    @apply bg-warning-a15 text-warning-soft-fg;
+    @apply bg-warning-a15 text-warning;
   }
 }
 
+/* Both badge flavours share one radius. A zone badge used to be rounded-md as a
+   standalone tag and rounded-full as a colour swatch inside an interface badge,
+   so the same element changed shape with its container. */
 .zonebadge {
   @apply border-secondary bg-secondary text-secondary-foreground inline-flex items-center gap-1.5 overflow-visible rounded-md border px-2 py-1 align-middle text-sm leading-normal font-semibold [transition:color_.15s,background-color_.15s,border-color_.15s];
 
@@ -44,6 +65,13 @@
   }
 }
 
+/* LuCI's zone band is a saturated colour supplied inline by luci-base
+   (`--zone-color-rgb`, e.g. lan = 144 240 144). At the 65% alpha this theme used
+   to paint it, near-white text measured 2.85:1 on the lan band and 2.42:1 on
+   wan_6 — the band name was unreadable on its own colour. 30% keeps the hue
+   recognisable as a swatch while every band clears AA (7.47:1 worst case,
+   measured across the five default zone colours). The band itself lives in
+   `_card.css`; the swatch alpha below matches it. */
 .ifacebadge {
   @apply border-border bg-muted text-foreground inline-flex cursor-default flex-nowrap items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-normal [transition:color_.15s,background-color_.15s,border-color_.15s];
 

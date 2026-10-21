@@ -130,7 +130,7 @@ body {
 
 .login-logo {
   /* Official Button icon-size square with the Card radius scale. */
-  @apply border-input bg-input-a30 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border;
+  @apply border-input bg-input-fill flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border;
 
   img {
     @apply h-full w-full;
@@ -166,7 +166,7 @@ body {
 
 /* Glass input wrapper — matches sign-in.tsx GlassInputWrapper */
 .login-input-glass {
-  @apply border-input bg-input-a30 relative rounded-xl border [transition:color_.15s,background-color_.15s,border-color_.15s];
+  @apply border-input bg-input-fill relative rounded-xl border [transition:color_.15s,background-color_.15s,border-color_.15s];
   backdrop-filter: blur(4px);
 
   &:focus-within {

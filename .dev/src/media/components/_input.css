@@ -1,7 +1,16 @@
 /* shadcn Input / Textarea / Select trigger.
    Official sizing: h-9, rounded-md, px-3, text-sm, shadow-xs; the dark surface
-   is bg-input/30 with the border from --input. Focus is a 3px ring at 50%
-   alpha on --ring plus a --ring border, not the old 2px full-alpha ring. */
+   is the input colour at 30% alpha with the border from --input. Focus is a 3px
+   ring at 50% alpha on --ring plus a --ring border, not the old 2px full-alpha
+   ring.
+
+   The field fill is `--input-fill`, not `--input-a30`. That official utility
+   means "30% of the --input colour", and --input is itself `oklch(1 0 0 / 15%)`
+   — so the painted fill is 4.5% white. The alpha ladder replaces a literal's
+   alpha rather than compositing it, so `--input-a30` produced a 30% white slab:
+   every field came out brighter than the card behind it and its own placeholder
+   text measured 2.55:1, below AA. `--input-fill` states the composite the
+   official utility actually paints. */
 input {
   @apply disabled:cursor-not-allowed disabled:opacity-50;
 }
@@ -12,8 +21,13 @@ input[type="number"],
 input[type="email"],
 .cbi-input-text,
 .cbi-input {
-  @apply border-input bg-input-a30 text-foreground placeholder:text-muted-foreground relative h-9 w-52.5 max-w-full rounded-md border px-3 py-1 text-sm shadow-xs [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s];
+  @apply border-input bg-input-fill text-foreground placeholder:text-muted-foreground relative h-9 w-52.5 max-w-full rounded-md border px-3 py-1 text-sm shadow-xs [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s];
   @apply focus-visible:border-ring focus-visible:ring-ring-a50 focus-visible:ring-[3px] focus-visible:outline-none;
+
+  /* 16px while the field is focused on touch-sized screens: iOS Safari zooms
+     the whole page when a focused input's font-size is below 16px, which threw
+     the layout sideways every time the keyboard opened. */
+  @apply max-md:text-base;
 
   .table.cbi-section-table & {
     @apply w-full;
@@ -29,8 +43,9 @@ input[type="email"],
 }
 
 textarea {
-  @apply border-input bg-input-a30 text-foreground placeholder:text-muted-foreground min-h-24 w-full resize-y rounded-md border px-3 py-2 text-sm shadow-xs [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s];
+  @apply border-input bg-input-fill text-foreground placeholder:text-muted-foreground min-h-24 w-full resize-y rounded-md border px-3 py-2 text-sm shadow-xs [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s];
   @apply focus-visible:border-ring focus-visible:ring-ring-a50 focus-visible:ring-[3px] focus-visible:outline-none;
+  @apply max-md:text-base;
 
   &[disabled] {
     @apply cursor-not-allowed opacity-50;
@@ -43,7 +58,7 @@ textarea {
 input[type="radio"],
 input[type="checkbox"] {
   @apply relative mr-3 inline-block size-4 shrink-0 cursor-pointer appearance-none align-middle disabled:cursor-not-allowed;
-  @apply before:border-input before:bg-input-a30 before:absolute before:inset-0 before:border before:shadow-xs before:[transition:background-color_.15s,border-color_.15s,box-shadow_.15s];
+  @apply before:border-input before:bg-input-fill before:absolute before:inset-0 before:border before:shadow-xs before:[transition:background-color_.15s,border-color_.15s,box-shadow_.15s];
   @apply after:bg-primary-foreground after:absolute after:inset-0 after:[mask-size:cover] after:[mask-position:center] after:[mask-repeat:no-repeat] after:opacity-0 after:[transition:opacity_.15s];
   @apply checked:before:border-primary checked:before:bg-primary checked:after:opacity-100;
   @apply focus-visible:before:border-ring focus-visible:before:ring-ring-a50 focus-visible:before:ring-[3px] focus-visible:before:outline-none;

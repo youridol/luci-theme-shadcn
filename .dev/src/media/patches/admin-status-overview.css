@@ -731,9 +731,9 @@ html.shadcn-drawer-lock body {
   transition: border-color 0.15s;
 }
 
-.shadcn-dash-tile:hover {
-  border-color: var(--ring-a50);
-}
+/* 磁贴没有 hover 反馈：它不可点击（无 handler、无 tabindex），原来那条
+   `border-color: var(--ring-a50)` 只是在暗示「可以点」，而点下去什么都不会
+   发生。状态反馈应当只出现在真能操作的元素上。 */
 
 .shadcn-dash-tile-head {
   display: flex;
@@ -891,10 +891,16 @@ html.shadcn-drawer-lock body {
 
    行高按内容最高的两张量：Top 主机 6 行 + 标题实测 353px，协议环 + 5 行
    图例实测 353px。22.5rem（360px）刚好容下，剩下 7px 给边框。图表两张
-   （端口流量 / 按小时）靠 flex 吃掉这 360px 里的余量，不靠行高去凑。 */
+   （端口流量 / 按小时）靠 flex 吃掉这 360px 里的余量，不靠行高去凑。
+
+   但行高不能写死成固定值：`grid-auto-rows: 22.5rem` 是**下限也是上限**，
+   而卡片内容随网口数变化。实测 2 个网口时端口卡内容约 261px，底部空出
+   ~52px；5 个网口时内容超过 313px，而 `.shadcn-dash-card` 没有 overflow，
+   会直接压到下一行。`minmax(20rem, auto)` 让行高由该行最高的卡决定，
+   360px 仍是最常见的结果。 */
 #shadcn-dash-flow .shadcn-dash-grid {
   align-items: stretch;
-  grid-auto-rows: 22.5rem;
+  grid-auto-rows: minmax(20rem, auto);
 }
 
 #shadcn-dash-flow .shadcn-dash-card {
@@ -1020,6 +1026,11 @@ html.shadcn-drawer-lock body {
 .shadcn-dash-cpu-temp {
   margin-left: auto;
   flex-shrink: 0;
+  /* 这一行原来没有 font-size，于是继承 body 的 14px —— 比同行的「总占用」
+     标签（12px）还大，达到主数值（16.8px）的 83%，次要读数在抢主读数。
+     温度是附带信息，压到 0.8125rem/500，[data-hot] 只改颜色不改字号。 */
+  font-size: 0.8125rem;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
 
@@ -1228,18 +1239,25 @@ html.shadcn-drawer-lock body {
 
 /* 三个 stop 的透明度是「面积能不能看见」的唯一开关。
 
-   0.28 起步时实测几乎看不出来：暗色卡片底色是 oklch(0.205)，白色以 0.28
-   叠上去只到 oklch(0.42) 左右，而曲线上方的空白也就在这个亮度附近 —— 填
-   充和背景分不开。0.42 起手能明确看出「线下面有块颜色」，到 100% 归零，
-   面积因此有方向感而不是一块平涂。 */
+   实测（白线 0.985 叠在卡片 0.205 上，按 alpha 正确合成后与卡片比）：
+     0.16 → 1.61:1   0.20 → 1.85:1   0.24 → 2.14:1   0.28 → 2.46:1
+     0.34 → 3.04:1   0.42 → 3.96:1
+
+   0.42 是「一块灰板」的成因：曲线下方的填充与卡片底的对比度接近 4:1，
+   在暗色卡片上比曲线本身还抢眼，而曲线上方的空白只有 1:1，于是整张图读起来
+   是一块灰而不是一条线。
+
+   顶段压到 0.24（2.14:1）：能明确看出「线下面有颜色」，同时仍明显弱于
+   曲线（11.7:1）与数值文字（17:1），层级回到「线是主体、面积是陪衬」。
+   中段 0.10、底段 0，让渐隐在曲线下方 55% 处就基本落地，避免整片平涂。 */
 .dash-stop-top {
   stop-color: currentColor;
-  stop-opacity: 0.42;
+  stop-opacity: 0.24;
 }
 
 .dash-stop-mid {
   stop-color: currentColor;
-  stop-opacity: 0.16;
+  stop-opacity: 0.1;
 }
 
 .dash-stop-end {
@@ -1435,13 +1453,21 @@ html.shadcn-drawer-lock body {
   opacity: 1;
 }
 
-/* 柱状图的背景轨道：每一格都有一条极淡的完整高度轨道，读者比的是「柱子
-   填到轨道哪里」，而不是「几根柱子谁高」—— 后者在没有数据的格子上会失真。
-   透明度压到 0.18：24 格铺满时 0.3 会让整片区域看起来是竖条纹。 */
+/* 柱状图的背景轨道：每一格都有一条完整高度的轨道，读者比的是「柱子填到轨道
+   哪里」，而不是「几根柱子谁高」—— 后者在没有数据的格子上会失真。
+
+   轨道原来用 --muted 铺 18% 不透明度。--muted 是 0.269，而卡片底就是
+   0.205 —— 两者明度只差 0.06，叠 18% 后与卡片的对比度只有 1.03:1，
+   等于没有画。轨道必须比卡片明显亮一档才读得出来，所以换成
+   --muted-foreground（0.708）以 20% 叠加，对比度 1.41:1：足够看见一条
+   浅槽，又比 0.9 不透明度的柱体（11.7:1）弱一个数量级，不会抢数据。
+
+   为什么不直接调高 --muted 的透明度：--muted 与卡片同属一个明度阶，叠多少
+   都只是把卡片涂得更像卡片；轨道需要的是「比底色亮」，不是「比底色灰」。 */
 .dash-bar-track,
 .dash-hour-rail {
-  fill: var(--muted);
-  fill-opacity: 0.18;
+  fill: var(--muted-foreground);
+  fill-opacity: 0.2;
   stroke: none;
 }
 
@@ -1453,10 +1479,18 @@ html.shadcn-drawer-lock body {
 
 /* ── 环形 ───────────────────────────────────────────────────────────── */
 
+/* 轨道同理：原来用 --muted 实心，与卡片 1.19:1，环形图看起来只有一段悬空的
+   弧，没有「还剩多少」的参照。改用 --muted-foreground 以 22% 叠加
+   （1.47:1），弧与轨道的关系才成立。
+
+   `stroke-linecap: butt` 是必须的：轨道是 359.99° 的弧，圆头会在 12 点位置
+   把两个端点各顶出半个线宽（协议环 13px），视觉上多出一块凸起。这条 CSS
+   会盖掉 _charts.js 里写在 SVG 属性上的同名设置，所以两处都写。 */
 .dash-ring-track {
   fill: none;
-  stroke: var(--muted);
-  stroke-linecap: round;
+  stroke: var(--muted-foreground);
+  stroke-opacity: 0.22;
+  stroke-linecap: butt;
 }
 
 .dash-ring-seg {
@@ -1591,7 +1625,14 @@ html.shadcn-drawer-lock body {
 }
 
 /* 降低动效时全部退化为静止终值：入场不淡入、线条不描边、补间由
-   _charts.js 的 reduceMotion() 直接跳过。 */
+   _charts.js 的 reduceMotion() 直接跳过。
+
+   这里还必须补两处 transition —— `animation: none` 管不到 transition，而
+   它们都在每秒/每分钟的刷新节奏上：
+
+   1. `.shadcn-dash-core-bar` 的高度过渡：每核细条每轮轮询都会改 height，
+      40px 高的位移在减少动效下仍会逐帧播放；
+   2. 抽屉的滑入：整屏宽度的位移，是减少动效最该去掉的一条。 */
 @media (prefers-reduced-motion: reduce) {
   .shadcn-dash-card,
   .shadcn-dash-tile,
@@ -1604,6 +1645,12 @@ html.shadcn-drawer-lock body {
   .dash-enter .dash-line-up {
     stroke-dasharray: none;
     stroke-dashoffset: 0;
+  }
+
+  .shadcn-dash-core-bar,
+  .shadcn-drawer,
+  .shadcn-drawer-mask {
+    transition: none;
   }
 }
 
@@ -1620,7 +1667,13 @@ html.shadcn-drawer-lock body {
   flex-direction: column;
   gap: 6px;
   padding: 10px;
-  background: var(--background);
+  /* `--muted` (0.269), not `--background` (0.145): a block nested inside a
+     card must read as a step *above* its parent, not below it. On
+     `--background` the inner block was darker than the card it sat in, so the
+     only thing separating them was the 1px border and the nesting read as a
+     hole. The active interface-box head in `#view` already assigns the
+     "recessed surface" role to `--muted`; this matches it. */
+  background: var(--muted);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
@@ -2045,6 +2098,20 @@ html.shadcn-drawer-lock body {
   }
 }
 
+/* 1024–1279px 单独一档，两列。
+
+   这一段是实测出来的空档：`#maincontent` 的内容宽 = 视口 − 256px 侧栏 −
+   48px 内边距，于是视口 1108–1279px 时内容宽 804–975px。上面的
+   `auto-fit minmax(260px, 1fr)` 在这个宽度里恰好排得下 3 条轨道，而资源区
+   与流量区各有 4 张卡 —— 结果是 3 + 1，第二行右侧空出 2/3 行宽，比单列还
+   难看。显式两列让 4 张卡排成 2×2。 */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  #shadcn-dash-res .shadcn-dash-grid,
+  #shadcn-dash-flow .shadcn-dash-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 767px) {
   /* 手机上真正要的是「现在通不通、哪里出问题」，所以只留概况带与异常横幅
      常驻，资源与流量两组折叠起来。 */
@@ -2053,10 +2120,16 @@ html.shadcn-drawer-lock body {
   }
 
   /* 单列堆叠时「等高」没有意义：每张卡独占一行，等高只会给内容少的那张
-     平白加一截空白。显式退回按内容定高。 */
+     平白加一截空白。显式退回按内容定高。
+
+     `grid-auto-rows` 也必须一起退回 auto。桌面那条 `minmax(20rem, auto)`
+     在窄屏仍然生效，于是行轨固定 320px，而卡片自身 `display: block` 只有
+     113px 高 —— 实测「今日流量按小时」下面空出 200px 的洞，手机上一屏只能
+     看到一张半卡片。 */
   #shadcn-dash-res .shadcn-dash-grid,
   #shadcn-dash-flow .shadcn-dash-grid {
     align-items: start;
+    grid-auto-rows: auto;
   }
 
   #shadcn-dash-res .shadcn-dash-card,

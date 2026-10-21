@@ -141,7 +141,7 @@ pre {
 }
 
 code {
-  @apply bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-sm;
+  @apply bg-muted text-muted-foreground rounded-sm px-1.5 py-0.5 font-mono text-sm;
 }
 
 a {

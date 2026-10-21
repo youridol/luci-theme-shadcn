@@ -22,13 +22,29 @@ animation: var(--animate-in);
 
 To make an entrance conditional (a drawer that must not replay on load), drive it with `@starting-style` rather than a bare `animation`, which would replay on every attribute change.
 
-`_reduced-motion.css` collapses every animation to 1ms rather than `none`, because luci-base acts on `transitionend`; that still applies to these animations.
+Opacity modifiers (`bg-accent/60`) compile to `color-mix()`, which `check-built-css.js` rejects (adr/0003). Use a baked alpha token (`bg-accent-a60`) instead; add the step to `ALPHAS` in `tokens/spec.js` and run `pnpm gen:tokens`.
+
+`_reduced-motion.css` collapses every animation to 1ms rather than `none`, because luci-base acts on `transitionend`; that still applies to these animations. Per-page patches must also cover their own `transition`s — `animation: none` does not stop them (the dashboard's per-poll core bars and drawer slide are the two that mattered).
 
 ## Tokens
 
 - **Token source**: the engine and resolver (operators, `createResolver`, CSS emission helpers) come from `@eamonxg/luci-theme-tokens` (`/engine`, `/emit`); this repo only keeps `tokens/spec.js` (derivations, baked-alpha variants) + `tokens/defaults.js` (input colors). Edit those, then run `pnpm gen:tokens`. Do not edit generated `src/media/_tokens.css` directly.
 - **`_tokens.css`**: generated flat OKLCH custom properties for the single dark scheme (adr/0002) plus the shared `@theme inline` mapping. It is imported by both `main.css` and `login.css`; runtime token-based `color-mix()` and relative `oklch(from …)` are prohibited, and so is every gradient function (adr/0003).
-- **Official names**: every surface/foreground token uses the shadcn/ui name (`--background`, `--card`, `--popover`, `--accent`, `--muted`, `--primary`, `--primary-foreground`, `--border`, `--input`, `--ring`, `--radius`, `--sidebar-*`), so the official docs read 1:1 against this theme. LuCI-only surfaces keep their own names (`--terminal-*`, `--progress-bar-*`, `--label-surface`, `--panel-bg`, `--login-left-bg`). `--radius` is the single radius knob (0.625rem) with the official sm/md/lg/xl/2xl multipliers; `--radius-base` is an alias for it.
+- **Official names**: every surface/foreground token uses the shadcn/ui name (`--background`, `--card`, `--card-foreground`, `--popover`, `--popover-foreground`, `--accent`, `--muted`, `--primary`, `--primary-foreground`, `--border`, `--input`, `--ring`, `--radius`, `--sidebar-*`), so the official docs read 1:1 against this theme. LuCI-only surfaces keep their own names (`--terminal-*`, `--progress-bar-*`, `--label-surface`, `--panel-bg`, `--login-left-bg`). `--radius` is the single radius knob (0.625rem) with the official sm/md/lg/xl/2xl multipliers; `--radius-base` is an alias for it.
+- **Field fill is `--input-fill`, not `--input-a30`.** The official field utility means "30% of `--input`", and `--input` already carries 15% alpha — so the painted fill is 4.5% white. The alpha ladder _replaces_ a literal's alpha rather than compositing it, so `--input-a30` produced a 30% white slab that was brighter than its own card. `--input-fill` states the composite; `--input-a30` is no longer emitted.
+- **`--accent` is a distinct step from `--muted`/`--secondary`.** All three were `oklch(0.269 0 0)` once, which made every `hover:bg-accent` on a muted surface a no-op. `--accent` and `--sidebar-accent` are `oklch(0.32 0 0)`: one visible step, and still AA for `--muted-foreground` (4.89:1).
+- **Tint contract** — one semantic colour means one thing everywhere:
+  - block surfaces (alert, message): `border-*-a30 bg-*-a10 text-*`
+  - badges / chips (inline, small): `bg-*-a15 text-*`
+  - floating surfaces (tooltip): solid `bg-* text-*-fg`
+  - filled buttons: `bg-destructive-strong text-destructive-fg`. There is no
+    success/info button variant: the official set is default / secondary /
+    destructive / outline, and destructive is this theme's only deliberate hue.
+
+  `*-fg` is the text colour that passes AA on its own fill, asserted by `pnpm check:contrast`. Never pick a foreground by eye — the checker measures alpha-composited pairs, which `colorjs.io`'s raw `contrast()` does not.
+
+- **Focus ring**: one shape for the whole theme — `focus-visible:border-ring focus-visible:ring-ring-a50 focus-visible:ring-[3px] focus-visible:outline-none`. `--ring` is `oklch(0.60 0 0)` because that is the one value clearing WCAG 1.4.11 (3:1) on all five beds it can land on, including the near-white primary button.
+- **Radii come from the ladder only.** `rounded` (4px) bypasses `--radius` and is not used: menu rows and small chips are `rounded-sm` (6px), controls and panels `rounded-md` (8px), cards and dialogs `rounded-lg`/`rounded-xl`, pills `rounded-full`.
 - **`login.css`**: separate Vite build entry for the login page; it does **not** import `main.css`, but re-imports the generated `_tokens.css`.
 
 ## Root font size

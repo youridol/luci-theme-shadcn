@@ -156,6 +156,97 @@ to the admin layout it is modelled on.
   `sidebar-shadcn.js` and `router-shadcn.js`. The contract is easy to get
   backwards: `require()` itself does `new _class()`, so the return value must be
   the **class**, and `__init__` is where the work belongs.
+- **Every hover state was invisible.** `--accent`, `--secondary` and `--muted`
+  were all the same literal `oklch(0.269 0 0)`, so `hover:bg-accent` on a
+  `bg-secondary` button, a `bg-muted` table row, a menu row or a sidebar item
+  changed nothing. `--accent` and `--sidebar-accent` are now `oklch(0.32 0 0)`
+  — one visible step above `--muted`, and still AA for `--muted-foreground`
+  text (4.89:1). The official dark value (0.371) measures 4.01:1 there, below
+  AA, which is why this theme keeps its own step.
+- **Semantic text failed AA.** `--success-fg` and `--info-fg` were near-white on
+  mid-lightness fills — 3.04:1 and 2.54:1, so every success/info tooltip, UCI
+  diff row and badge was below AA. Both now use the near-black canvas value
+  (6.2:1 and 7.5:1). Solid destructive fills moved to `--destructive-strong`
+  (`oklch(0.56 0.191 22.22)`, 4.92:1 with near-white) instead of the full
+  `--destructive` (2.75:1).
+- **Every input rendered as a bright grey slab.** The official field utility is
+  "30% of `--input`", and `--input` is itself `oklch(1 0 0 / 15%)` — the painted
+  fill is 4.5% white. The alpha ladder replaces a literal's alpha instead of
+  compositing it, so `--input-a30` produced 30% white: fields came out brighter
+  than their card and placeholder text measured 2.55:1. New `--input-fill`
+  states the composite; `--input-a30` is no longer emitted. The field border
+  went from the official 15% white (1.57:1, invisible) to 35% (3.23:1, WCAG
+  1.4.11).
+- **Buttons had no focus indicator.** Every input, select, tab and the log
+  viewer had a 3px ring; the button family had none, making it the only
+  keyboard-reachable control with no visible focus. All button variants now
+  carry `focus-visible:border-ring ring-ring-a50 ring-[3px]`. `--ring` moved
+  0.556 → 0.60 because the 50% halo alone measured 2.68:1 on `--accent`.
+- **The focus-ring contrast check could not fail.** `colorjs.io`'s `contrast()`
+  ignores alpha, so a 50%-alpha ring measured as opaque (4.18:1) while painting
+  1.87:1. `scripts/check-token-contrast.js` now composites in the correct
+  direction and asserts 17 text pairs plus 7 non-text pairs, including the ring
+  on all five surfaces it can land on.
+- Nine bare `rounded` (4px) rules bypassed the `--radius` ladder; they are
+  `rounded-sm` (6px) now, so radii come from the ladder only.
+- The zone band (`--zone-color-rgb`) was painted at 65% alpha, putting near-white
+  band names at 2.85:1 (lan) and 2.42:1 (wan_6). 30% keeps the swatch readable
+  and every default zone colour clears AA.
+- `cbi-button-positive` / `-save` used a 15% primary tint, which read as "the
+  white button, but disabled" next to apply. They now use the official secondary
+  surface — not a green success fill: shadcn/ui has no success button variant,
+  this theme's tokens are documented as neutral with destructive as the only
+  deliberate hue, and a saturated green button would out-shout the page it sits
+  on. `cbi-button-neutral` is explicitly kept in the same family: an earlier pass
+  in this release gave it `bg-info` and turned every pager arrow into a solid
+  blue block.
+- Dashboard: the hourly-bar rail and the ring track were painted with `--muted`
+  over a `--card` bed — 1.03:1 and 1.19:1, i.e. not rendered at all. Both now
+  use `--muted-foreground` at low alpha (1.41:1 / 1.47:1), and the area fill
+  stops dropped from 0.42/0.16 to 0.24/0.10 so the fill sits under the line
+  instead of reading as a grey plate.
+- Dashboard: sparklines without an axis scaled to their own min..max, so a 1%–7%
+  CPU signal filled the whole plot. `lineChart` gained `zero: true` and the CPU
+  card plus both rate tiles use it, making the fill proportional to the value.
+- Dashboard: `dashClock` was defined twice; the later (epoch-seconds) version
+  silently won, so the port card's x-axis labels — fed milliseconds — landed
+  around the year 56000. One definition remains, `history.points[].t` is
+  converted at the call site, and the diagnose timestamp is converted too.
+- Dashboard: the protocol ring's `cap: "round"` swallowed its 3° gaps (a round
+  cap adds ~9.3° at each end at r≈40), merging five sectors into one ring; the
+  track's round caps also bulged at 12 o'clock. Both are `butt`.
+- Dashboard: the port chart drew an area fill for the upload series as well, and
+  the two `objectBoundingBox` fills composited into a grey-blue plate that hid
+  the blue line. Upload now has `areaClass: null`.
+- Dashboard: `rankBar` tweened from zero every refresh (`from` was computed and
+  never read), so each host's bar collapsed and regrew once a minute.
+- Dashboard: on ≤767px `grid-auto-rows` stayed at the desktop `minmax(20rem,
+auto)`, so row tracks were 320px while a stacked card measured 113px — the
+  hourly card left a 200px hole. Mobile now resets to `auto`.
+- Dashboard: 1024–1279px had no column rule, so four cards landed as 3 + 1 with
+  two thirds of the second row empty. That range is now explicitly two columns.
+- Dashboard: `grid-auto-rows: 22.5rem` was both floor and ceiling, so a card
+  with more content than 360px overflowed into the next row. It is
+  `minmax(20rem, auto)`.
+- Dashboard: `dashBytes` printed `1000 KB` for 1023488 B, because the carry
+  threshold (1024) disagreed with the output rule (no decimals at ≥100).
+  `dashPct` dropped trailing zeros, making columns jitter every poll; it now
+  always shows one decimal. Uptime under a minute read `0 分`, indistinguishable
+  from a failed read; it reads `<1 分`.
+- Dashboard: the tile value and its unit rendered at one size, so `GB`/`MB/s`
+  competed with the number while `台` beside it did not. Values and units are
+  now separate spans; the memory ring no longer repeats the percentage already
+  shown in the row above it.
+- Dashboard: `.shadcn-dash-tile:hover` lit its border although the tile is not
+  clickable — a false affordance, removed. `prefers-reduced-motion` covered
+  animations but not the per-poll core-bar height transition or the drawer
+  slide; both are disabled now.
+- Dashboard: the line card's inner block used `--background`, darker than the
+  card it sits in, so nesting read as a hole. It uses `--muted`.
+- `.dev/tokens/spec.js` comments name official utilities (`bg-input/30`,
+  `bg-destructive/60`). Tailwind's source scan read them as candidates and
+  emitted three `color-mix()` rules, which `check-built-css.js` rejects.
+  `tokens/**/*.js` is now excluded from the scan.
 
 ### Notes
 
@@ -164,7 +255,9 @@ to the admin layout it is modelled on.
   loudly enough to take down every backend method. See
   [.dev/docs/dashboard.md](.dev/docs/dashboard.md) for the full list.
 - Budgets in `.dev/tests/build-output.test.js` guard asset growth; they were
-  re-based after the dark-only work removed a colour scheme's worth of bytes.
+  re-based after the dark-only work removed a colour scheme's worth of bytes,
+  and raised by the measured 2.1 KB of the component-consistency pass above
+  (every per-file limit still passes).
 
 ## 0.8.0
 

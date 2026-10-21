@@ -3,16 +3,17 @@
    it follows --muted-foreground and the input's own text colour instead. */
 select {
   @apply border-input bg-popover text-foreground focus-visible:border-ring focus-visible:ring-ring-a50 relative h-9 max-w-full min-w-52.5 appearance-none rounded-md border pr-9 pl-3 text-sm shadow-xs [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s] focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:max-w-100;
+  @apply max-md:text-base;
 
-  /* Two layers, not a flat bg-input-a30. The UA paints a native <select>'s
+  /* Two layers, not a flat --input-fill. The UA paints a native <select>'s
      option list from this element's own background-color, and a translucent
      one composites over whatever bed: the popup came out a different tone from
      its rows, so every choice but the OS-highlighted one was hard to read.
-     --popover is the opaque base (what the popup inherits) and the input tint
+     --popover is the opaque base (what the popup inherits) and the field tint
      rides on top as a solid pseudo-element, leaving the trigger's look
      unchanged without a gradient (.dev/docs/adr/0003-no-gradients.md). */
   &::before {
-    @apply bg-input-a30 pointer-events-none absolute inset-0 rounded-md content-[''];
+    @apply bg-input-fill pointer-events-none absolute inset-0 rounded-md content-[''];
   }
 
   /* Chevron drawn as a mask so it inherits currentColor (no hard-coded hex).
@@ -21,6 +22,13 @@ select {
   &::after {
     @apply text-muted-foreground pointer-events-none absolute right-3 block size-4 bg-current content-[''];
     @apply [mask:url('@assets/icons/chevron-down.svg')_center/contain_no-repeat];
+  }
+
+  /* Official `dark:hover:bg-input/50`: the trigger acknowledges the pointer. It
+     had no hover state at all, so a <select> was the one form control that gave
+     no feedback before it was opened. */
+  &:hover:not([disabled]) {
+    @apply border-ring;
   }
 }
 

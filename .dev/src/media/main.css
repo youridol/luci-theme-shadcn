@@ -22,6 +22,13 @@
 @source not "../../vite.config.ts";
 @source not "../../scripts/*.client.js";
 @source not "../../tests/*.js";
+/* `tokens/spec.js` explains official shadcn utilities in its comments (e.g.
+   "the official dark value paints bg-destructive/60"). Those are prose, not
+   markup, but the scanner read them as candidates and emitted `.bg-accent\/60`,
+   `.bg-destructive\/60` and `.bg-input\/30` — three rules that each carry a
+   color-mix() through their @supports fallback, which adr/0003 forbids and
+   check-built-css.js rejects. The token source renders nothing; exclude it. */
+@source not "../../tokens/**/*.js";
 /* `docs/*.md` only matched the top level. The ADRs live one directory down,
    and a code span in one of them (`transform: scaleY()`) emitted a stray
    `.transform` utility plus the whole `--tw-rotate-*` property block into this

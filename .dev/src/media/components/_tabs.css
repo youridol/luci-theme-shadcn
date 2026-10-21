@@ -1,9 +1,9 @@
 /* shadcn Tabs (default variant) — LuCI tab sections.
    Official List: bg-muted, rounded-lg, p-[3px], h-9, text-muted-foreground.
    Official Trigger active: bg-background + text-foreground + shadow-sm, with
-   border-input bg-input-a30 and a border (the official theme pairs those with
+   border-input, the field fill and a border (the official theme pairs those with
    `dark:`, which this single-scheme theme applies unconditionally); inactive
-   sits at text-foreground/60. */
+   text sits at 60% of the foreground. */
 .cbi-tabmenu {
   @apply bg-muted text-muted-foreground mb-2 inline-flex h-9 w-fit max-w-full items-center gap-0 overflow-x-auto rounded-lg p-[3px];
 
@@ -19,11 +19,11 @@
     }
 
     > a {
-      @apply text-muted-foreground hover:text-foreground focus-visible:ring-ring-a50 inline-flex h-[calc(100%-1px)] items-center justify-center rounded-md border border-transparent px-3 py-1 text-sm font-medium whitespace-nowrap no-underline [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s] focus-visible:ring-[3px] focus-visible:outline-none;
+      @apply text-muted-foreground hover:text-foreground hover:bg-accent-a60 focus-visible:border-ring focus-visible:ring-ring-a50 inline-flex h-[calc(100%-1px)] items-center justify-center rounded-md border border-transparent px-3 py-1 text-sm font-medium whitespace-nowrap no-underline [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s] focus-visible:ring-[3px] focus-visible:outline-none;
     }
 
     &.cbi-tab > a {
-      @apply bg-background text-foreground border-input bg-input-a30 border shadow-sm;
+      @apply bg-background text-foreground border-input bg-input-fill border shadow-sm;
     }
   }
 }
@@ -44,13 +44,17 @@
   @apply border-border relative flex items-center gap-0 overflow-x-auto border-b;
 
   a {
-    @apply text-muted-foreground hover:text-foreground block px-6 py-3 text-center text-sm font-medium whitespace-nowrap [transition:color_.15s,background-color_.15s,border-color_.15s] hover:no-underline;
+    @apply text-muted-foreground hover:text-foreground hover:bg-accent-a60 block px-6 py-3 text-center text-sm font-medium whitespace-nowrap [transition:color_.15s,background-color_.15s,border-color_.15s] hover:no-underline;
   }
 
+  /* The active trigger keeps the same weight as the inactive ones. It used to
+     jump to font-semibold, which made the row reflow by a pixel or two every
+     time a tab was selected — the underline and the colour already carry the
+     state. */
   > li.active {
     @apply border-foreground border-b-2;
     > a {
-      @apply text-foreground font-semibold;
+      @apply text-foreground;
     }
   }
 }

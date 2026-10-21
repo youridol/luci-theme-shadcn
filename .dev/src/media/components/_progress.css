@@ -12,12 +12,17 @@
    legible over both the filled and the unfilled segments.
 
    The bar is also taller than the official h-2: the label is 10px with a 1
-   line-height, so an 8px box cut a pixel off its top and bottom. */
+   line-height, so an 8px box cut a pixel off its top and bottom.
+
+   The plate is `rounded-full`, not `rounded-sm`: it floats inside a capsule
+   track, and a 6px rectangle inside a 10px capsule reads as a stray chip. The
+   fill transition names `--ease-out` like every other transition in the theme
+   instead of falling back to the browser default curve. */
 .cbi-progressbar {
   @apply bg-primary-a20 relative h-5 w-full cursor-help overflow-hidden rounded-full;
-  @apply before:text-foreground before:bg-background-a60 before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-sm before:px-1.5 before:py-px before:text-center before:text-[10px] before:leading-none before:whitespace-nowrap before:content-[attr(title)];
+  @apply before:text-foreground before:bg-background-a60 before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:px-1.5 before:py-px before:text-center before:text-[10px] before:leading-none before:whitespace-nowrap before:content-[attr(title)];
 
   > div {
-    @apply bg-primary h-full [transition:width_.3s];
+    @apply bg-primary h-full [transition:width_.3s_var(--ease-out)];
   }
 }

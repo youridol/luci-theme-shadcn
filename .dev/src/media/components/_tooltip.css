@@ -2,7 +2,13 @@
    Official TooltipContent is the inverted surface: bg-foreground with
    text-background, rounded-md, px-3 py-1.5, text-xs, plus zoom-in-95. This
    theme keeps the bordered panel look (LuCI tooltips carry structured content)
-   but adopts the official radius, padding, shadow-md and the scale-in. */
+   but adopts the official radius, padding, shadow-md and the scale-in.
+
+   Semantic variants are solid fills paired with their AA-safe foreground, which
+   is the "floating surface" row of the tint contract in _badge.css. They used
+   `bg-success`/`bg-info` with near-white text at 3.0:1 and 2.5:1 — a tooltip is
+   exactly the surface where a low-contrast pair is least readable, because it
+   is small, transient and often the only explanation on screen. */
 .cbi-tooltip {
   /* Hidden bubbles park off-screen (`left:-10000px`): a
      visibility-hidden absolute box left at its anchor still counts into the
@@ -12,19 +18,19 @@
      `transition-all` would animate the inset and make the bubble fly in from
      off-screen. `w-max` sizes the bubble by its content instead of the narrow
      anchor's containing block (which squeezed it to one word per line). */
-  @apply border-border bg-popover text-foreground absolute inset-s-[-10000px] z-50 w-max max-w-xs scale-95 rounded-md border px-3 py-1.5 text-xs break-normal whitespace-normal opacity-0 shadow-md [transition:visibility_.15s_var(--ease-out),opacity_.15s_var(--ease-out),scale_.15s_var(--ease-out)];
+  @apply border-border bg-popover text-popover-foreground absolute inset-s-[-10000px] z-50 w-max max-w-xs scale-95 rounded-md border px-3 py-1.5 text-xs break-normal whitespace-normal opacity-0 shadow-md [transition:visibility_.15s_var(--ease-out),opacity_.15s_var(--ease-out),scale_.15s_var(--ease-out)];
 
   &.error {
-    @apply border-destructive-a40 bg-destructive text-destructive-fg;
+    @apply border-destructive-strong bg-destructive-strong text-destructive-fg;
   }
   &.success {
-    @apply border-success-a40 bg-success text-success-fg;
+    @apply border-success bg-success text-success-fg;
   }
   &.info {
-    @apply border-info-a40 bg-info text-info-fg;
+    @apply border-info bg-info text-info-fg;
   }
   &.notice {
-    @apply border-warning-a40 bg-warning text-warning-fg;
+    @apply border-warning bg-warning text-warning-fg;
   }
 }
 
@@ -36,7 +42,8 @@
     @apply invisible scale-95 opacity-0 [transition:visibility_.15s_var(--ease-out),opacity_.15s_var(--ease-out),scale_.15s_var(--ease-out)];
   }
 
-  &:hover .cbi-tooltip {
+  &:hover .cbi-tooltip,
+  &:focus-visible .cbi-tooltip {
     @apply visible inset-s-auto scale-100 opacity-100;
   }
 }

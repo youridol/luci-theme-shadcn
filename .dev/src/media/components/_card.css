@@ -2,9 +2,17 @@
    Official Card: rounded-xl, border, bg-card, shadow-sm, py-6, gap-6.
    Section headings keep the LuCI structure; the title uses the official
    CardTitle sizing (leading-none font-semibold) and descriptions use
-   text-muted-foreground. */
+   text-muted-foreground.
+
+   Elevation is stated as one ladder so cards stop competing with each other:
+     content card (.content-card)  rounded-xl  shadow-xs  (the shell's own inset)
+     section card (.cbi-section)   rounded-xl  shadow-sm
+     nested box   (.ifacebox)      rounded-lg  no shadow  (it sits *on* a card)
+   `shadow-xs` in Tailwind v4 is `0 1px 2px`, which on a 0.145 canvas is
+   invisible; the section card takes the theme's `--shadow-sm` so a card reads as
+   lifted off the canvas at all. */
 .cbi-section {
-  @apply border-border bg-card mb-4 overflow-visible rounded-xl border p-4 shadow-xs;
+  @apply border-border bg-card mb-4 overflow-visible rounded-xl border p-4 shadow-sm;
 
   &[data-tab-title] {
     @apply m-0 p-0;
@@ -38,7 +46,7 @@
   }
 
   legend {
-    @apply text-base font-semibold;
+    @apply text-base leading-none font-semibold;
   }
 
   h3 {
@@ -72,8 +80,13 @@
   .ifacebox-head {
     @apply border-border bg-muted text-foreground w-full rounded-t-lg border-b px-3 py-2 text-center text-sm font-semibold [transition:color_.15s,background-color_.15s,border-color_.15s];
 
+    /* luci-base supplies --zone-color-rgb as a saturated band colour. At 65%
+       alpha (what this rule used to paint) near-white text measured 2.85:1 on
+       the lan band and 2.42:1 on wan_6 — the band name was unreadable on its own
+       colour. 30% keeps the hue as a recognisable swatch and every band clears
+       AA (worst case 7.47:1 across the five default zone colours). */
     &[style*="--zone-color-rgb"] {
-      @apply bg-[rgb(var(--zone-color-rgb),.65)]!;
+      @apply bg-[rgb(var(--zone-color-rgb),.3)]!;
     }
 
     &.cbi-tooltip-container {

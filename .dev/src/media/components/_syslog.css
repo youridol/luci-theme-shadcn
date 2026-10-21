@@ -44,7 +44,7 @@
    -v2raya, -openlist). */
 #syslog,
 #log_textarea {
-  @apply w-full text-xs leading-snug;
+  @apply w-full text-xs leading-[1.7];
 }
 
 #syslog {
@@ -71,7 +71,7 @@
     /* Inline flow + real spaces (not flex/grid) so selection copies clean
        text; max-content width so hover/tint backgrounds span the scrolled
        width. */
-    @apply w-max min-w-full rounded px-2 whitespace-pre;
+    @apply w-max min-w-full rounded-sm px-2 whitespace-pre;
 
     &:hover {
       @apply bg-terminal-hover;

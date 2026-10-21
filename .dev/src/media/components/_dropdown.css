@@ -10,7 +10,7 @@
   }
 
   &:not(.btn):not(.cbi-button) {
-    @apply border-input bg-input-a30 max-w-full min-w-52.5 rounded-md border md:max-w-100;
+    @apply border-input bg-input-fill max-w-full min-w-52.5 rounded-md border md:max-w-100;
 
     > ul > li[placeholder] {
       @apply hidden;
@@ -19,7 +19,7 @@
 
   /* luci-base moves focus into the list only on the ul's transitionend. */
   > ul {
-    @apply m-0 flex flex-1 list-none flex-nowrap items-center gap-0.5 overflow-hidden opacity-99 [transition:opacity_120ms_ease-out];
+    @apply m-0 flex flex-1 list-none flex-nowrap items-center gap-0.5 overflow-hidden opacity-99 [transition:opacity_150ms_var(--ease-out)];
 
     > li {
       @apply m-0 hidden list-none items-center gap-1 overflow-hidden px-2 py-1.5;
@@ -53,10 +53,10 @@
     }
 
     &.dropdown {
-      @apply border-border bg-popover absolute left-0 z-50 max-h-64 w-fit min-w-full overflow-y-auto rounded-md border p-1 opacity-100 shadow-md;
+      @apply border-border bg-popover text-popover-foreground absolute left-0 z-50 max-h-64 w-fit min-w-full overflow-y-auto rounded-md border p-1 opacity-100 shadow-md;
 
       > li {
-        @apply text-foreground hover:bg-accent hover:text-accent-foreground relative min-h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm;
+        @apply text-popover-foreground hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground relative min-h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm focus:outline-none;
       }
     }
 

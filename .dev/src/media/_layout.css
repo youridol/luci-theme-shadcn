@@ -292,15 +292,20 @@ html[data-sidebar-floating="true"] #sidebar {
 
 /* 分区名：抽屉里没有手风琴的缩进层级，靠一条细线与第一条分开。 */
 .sidebar-subdrawer-head {
-  @apply text-muted-foreground mb-0.5 border-b px-2 pt-1 pb-1.5 text-xs font-semibold;
+  @apply text-muted-foreground mb-0.5 border-b px-2 pt-1 pb-1.5 text-xs font-medium tracking-wide;
   border-color: var(--border);
 }
 
+/* 抽屉里的子项与侧栏用同一套状态表面：rest 是次要文字色，hover 与 active 都
+   落在 --sidebar-accent 上，active 额外加粗。
+
+   原来这里 hover 用 --muted、active 也用 --muted：两者同值，于是「已选中」
+   和「鼠标划过」在视觉上完全一样，从抽屉里读不出当前页。 */
 .sidebar-subdrawer-link {
-  @apply text-foreground hover:bg-muted block rounded-md px-2 py-1.5 text-sm no-underline [transition:background-color_.15s,color_.15s];
+  @apply text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground block rounded-sm px-2 py-1.5 text-sm no-underline [transition:background-color_.15s,color_.15s];
 
   &.active {
-    @apply bg-muted font-medium;
+    @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
   }
 }
 
@@ -311,7 +316,7 @@ html[data-sidebar-floating="true"] #sidebar {
 }
 
 .sidebar-collapsed-popover-title {
-  @apply text-foreground px-3 pt-1.5 pb-1 text-xs font-semibold;
+  @apply text-muted-foreground px-3 pt-1.5 pb-1 text-xs font-medium tracking-wide;
 }
 
 .sidebar-collapsed-popover-list {
@@ -483,14 +488,13 @@ html[data-sidebar-anim] #sidebar {
     max-width: 80rem;
   }
 
-  h1 {
-    @apply mb-4 border-0 pl-0 text-2xl font-semibold tracking-tight;
-  }
+  /* Headings are already set once in _base.css (size, weight, tracking and
+     leading). Repeating them here dropped `leading-tight` and `tracking-tight`
+     for h2/h3, so a page title and a section title rendered with different
+     rhythm depending on which file won. Only the LuCI-specific reset stays. */
+  h1,
   h2 {
-    @apply mb-3 border-0 pl-0 text-xl font-semibold;
-  }
-  h3 {
-    @apply mb-2 text-lg font-semibold;
+    @apply border-0 pl-0;
   }
 
   .cbi-map-descr,

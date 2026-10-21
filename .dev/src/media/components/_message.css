@@ -1,7 +1,13 @@
 .alert-message {
   /* shadcn Alert: rounded-lg, border, px-4 py-3, text-sm, bg-card for default.
      Radius matches the Card scale rather than `.cbi-section`, so the alert
-     reads as the same elevation as the card it stacks above. */
+     reads as the same elevation as the card it stacks above.
+
+     The semantic variants follow the block-level row of the tint contract
+     documented in _badge.css (border-*-a30 + bg-*-a10 + the token's own text
+     colour). `warning` used `--warning-soft-fg` while the badge next to it used
+     `--warning`; both now use `--warning`, so one semantic colour is one colour
+     wherever it is rendered. */
   @apply border-border bg-card text-foreground mb-4 rounded-lg border px-4 py-3 text-sm;
 
   &.success {
@@ -12,7 +18,7 @@
   }
   &.warning,
   &.notice {
-    @apply border-warning-a30 bg-warning-a10 text-warning-soft-fg;
+    @apply border-warning-a30 bg-warning-a10 text-warning;
   }
   &.error,
   &.danger {
@@ -28,8 +34,12 @@
     @apply border-0 bg-transparent text-inherit;
   }
 
+  /* Official AlertTitle is `text-sm font-medium tracking-tight` and inherits
+     the alert's own text colour; it is a label for the message, not a heading.
+     It used to be text-base/600 in `--foreground`, which out-shouted the card
+     title above it. */
   h4 {
-    @apply mb-2 text-base font-semibold;
+    @apply mb-2 text-sm font-medium tracking-tight;
   }
   p {
     @apply text-sm leading-relaxed;

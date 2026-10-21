@@ -332,6 +332,16 @@
       x /= 1024;
       i++;
     }
+    /* 进位阈值必须与输出规则一致。
+
+       输出规则是「≥100 就不带小数」，于是 1023488 B（= 999.5 KB）会打印成
+       「1000 KB」—— 四位数字恰好出现在规则切换点上，而它明明已经该进位成
+       MB 了。这里在「取整后会变成四位数」时继续进位，任何单位下都只出
+       1–3 位整数。 */
+    while (x >= 999.5 && i < units.length - 1) {
+      x /= 1024;
+      i++;
+    }
     return (x >= 100 ? x.toFixed(0) : x.toFixed(1)) + " " + units[i];
   }
 
@@ -342,12 +352,19 @@
     return dashBytes(v) + "/s";
   }
 
-  /* 横轴用的时钟标签：`13:20:56`。
+  /* 横轴与「今日流量」起点用的时钟标签：`13:20:56`。
 
      只到秒，不带日期：这张图的时间跨度最多两分钟，跨天时日期反而占地方；
-     真要看日期，看板上方已有「最近更新」。 */
+     真要看日期，看板上方已有「最近更新」。
+
+     入参是**毫秒**。`history.points[].t` 是 epoch 秒，所以那边要乘 1000 再
+     传进来（见 dashHourly 的调用点）。
+
+     这条函数曾被定义两次（另一份接受 epoch 秒并输出 `13:20`），后一份静默
+     覆盖前一份，于是端口卡横轴的 `dashTimes`（毫秒）被当成秒再乘 1000，
+     时间戳落到公元五万年。现在只保留这一份，单位写进名字避免再混淆。 */
   function dashClock(ms) {
-    if (!ms) return "";
+    if (ms == null || !isFinite(ms)) return "—";
     const d = new Date(ms);
     const p = function (v) {
       return (v < 10 ? "0" : "") + v;
@@ -388,11 +405,15 @@
     return pick(/^pppoe-/) || pick(/^(wan|wwan)\d*$/) || pick(/^wan/) || null;
   }
 
-  // 一位小数：整数会把 3.4% 与 4.4% 显示成同一个数，而 "—" 又必须能和
-  // "0%" 区分开。
+  /* 一位小数，且**恒定一位**：整数会把 3.4% 与 4.4% 显示成同一个数，而
+     "—" 又必须能和 "0%" 区分开。
+
+     去尾零会让宽度在 "3%" 与 "12.3%" 之间跳。配 tabular-nums 只保证每个
+     数字等宽，不保证字符数相同，于是百分比后面那串数值每轮轮询都会横向抖
+     一下。固定一位小数让整列稳定。 */
   function dashPct(v) {
     if (v == null || !isFinite(v)) return "—";
-    return (Math.round(v * 10) / 10).toString() + "%";
+    return v.toFixed(1) + "%";
   }
 
   // 秒数 → 「3 天 5 小时」这类可读时长。
@@ -406,14 +427,10 @@
     const m = Math.floor((sec % 3600) / 60);
     if (d > 0) return d + " 天 " + h + " 小时";
     if (h > 0) return h + " 小时 " + m + " 分";
+    /* 刚开机不到一分钟时原样打印「0 分」，与「读取失败」的 "—" 分不开。
+       明确写成「<1 分」，读者才知道这是「很短」而不是「没有」。 */
+    if (sec < 60) return "<1 分";
     return m + " 分";
-  }
-
-  function dashClock(epochSec) {
-    if (epochSec == null || !isFinite(epochSec)) return "—";
-    const d = new Date(epochSec * 1000);
-    const p = (x) => String(x).padStart(2, "0");
-    return p(d.getHours()) + ":" + p(d.getMinutes());
   }
 
   /* 「N 秒前 / N 分钟前」。
@@ -586,12 +603,25 @@
     return box;
   }
 
+  /* 磁贴主数值 = 数值 + 单位两段。
+
+     调用方传「带单位的整串」时（例如 dashBytes 的 "10.7 GB"），单位会被
+     拆到 `.shadcn-dash-tile-unit` 里按 0.7rem 渲染，与旁边「7 台」的「台」
+     保持同一层级。原来「GB」「MB/s」跟着数值一起按 1.4rem 渲染，同一条概况
+     带里出现了两种单位字号。 */
   function dashSetValue(box, text, unitText) {
     if (!box) return;
     const val = box.querySelector(".shadcn-dash-tile-value");
     const unit = box.querySelector(".shadcn-dash-tile-unit");
     if (val) val.textContent = text;
     if (unit) unit.textContent = unitText ?? "";
+  }
+
+  /* 把一个「数值 + 空格 + 单位」的字符串拆成两段。
+     单位表与 dashBytes / dashRate 的输出保持一致（B, KB…PB, 以及 /s 后缀）。 */
+  function dashSplitUnit(text) {
+    const m = /^(-?[\d.,]+)\s+([A-Za-z/]+)$/.exec(text ?? "");
+    return m ? { value: m[1], unit: m[2] } : { value: text ?? "", unit: "" };
   }
 
   function dashSetFoot(box, text) {
@@ -902,7 +932,8 @@
 
     const meta = dashEl("span", "shadcn-dash-diagnose-meta");
     meta.textContent =
-      dashClock(result.at) +
+      // result.at 是 epoch 秒（见上面 at: Math.floor(Date.now() / 1000)）。
+      dashClock(result.at * 1000) +
       " 执行 · 耗时 " +
       (result.elapsedMs != null ? result.elapsedMs + " ms" : "—");
     head.appendChild(meta);
@@ -1042,6 +1073,9 @@
           key: "tile-wan",
           lineClass: "dash-line",
           areaClass: "dash-area",
+          // 锚零：不锚零时这条线按自身的 min..max 铺满整个槽位，面积填充
+          // 会盖满整块区域（见 _charts.js 里 zero 的说明）。
+          zero: true,
         });
       });
     }
@@ -1104,7 +1138,8 @@
             if (dt >= 0) up += dt;
           }
         }
-        dashSetValue(todayTile, dashBytes(up + down), "");
+        const total = dashSplitUnit(dashBytes(up + down));
+        dashSetValue(todayTile, total.value, total.unit);
         dashSetFoot(
           todayTile,
           "↑ " +
@@ -1112,7 +1147,8 @@
             " · ↓ " +
             dashBytes(down) +
             " · 自 " +
-            dashClock(hist.points[0].t),
+            // points[].t 是 epoch 秒，dashClock 收毫秒。
+            dashClock(hist.points[0].t * 1000),
         );
         // 今日流量按小时的小柱：磁贴里只要一个形状趋势，所以复用同一份
         // 24 桶数据，但不画轴、不画标签。
@@ -1148,7 +1184,15 @@
           if (rates[name].tx != null) up += rates[name].tx;
         }
       }
-      dashSetValue(rateTile, any ? dashRate(down) : "—", any ? "↓" : "");
+      /* 速率磁贴：数值与「↓ MB/s」分两段，单位按 0.7rem 渲染。
+         dashRate 已经带 "/s"，拼上箭头后是 "866 KB/s ↓"，这里拆成
+         数值 "866" + 单位 "KB/s ↓"，与「7 台」的单位层级一致。 */
+      if (any) {
+        const r = dashSplitUnit(dashRate(down));
+        dashSetValue(rateTile, r.value, (r.unit ? r.unit + " " : "") + "↓");
+      } else {
+        dashSetValue(rateTile, "—", "");
+      }
       /* baselineAge > 0 表示后端刚重启，本轮速率是拿采样器里 N 秒前的点算
          出来的，不是「刚刚这一秒」的瞬时值。不标出来会让人以为速率突然变了
          一个量级。只有一轮如此，下一秒就恢复正常基准。 */
@@ -1172,6 +1216,7 @@
           key: "tile-rate",
           lineClass: "dash-line",
           areaClass: "dash-area",
+          zero: true,
         });
       });
     }
@@ -1389,6 +1434,10 @@
           grid: 2,
           lineClass: "dash-line",
           areaClass: "dash-area",
+          /* 锚零，否则这台空闲机器上 1%–7% 的占用会被拉伸铺满整个 34px
+             画框：曲线在上下边缘来回撞，面积填充盖满整块，卡片读起来是
+             「一座灰山」而不是「一条浅波」。 */
+          zero: true,
         });
 
         if (fast.cpuPer && fast.cpuPer.length) {
@@ -1444,8 +1493,12 @@
 
            早先是「空闲 / 已用」两个扇区拼满整圈 —— 两个纯色块相撞，读者
            要自己去分辨哪一块才是已用，而环形图的整个意义是「一眼看出比例」。
-           现在轨道承担「剩余」的语义（弱色），弧只画已用，中心数字直接给出
-           读数，图例因此可以删掉。 */
+           现在轨道承担「剩余」的语义（弱色），弧只画已用。
+
+           中心不再写百分比，也不再写「内存」这个标签：上面那行
+           `.shadcn-dash-metric-row` 已经有同一个 6.8%，卡片标题也已经是
+           「内存与存储」。同一个数在一张卡里出现两次、同一个词出现两次，
+           读者只会怀疑自己看错了。环本身已经表达比例，中心留空更干净。 */
         const ringWrap = dashEl("div", "shadcn-dash-ring-wrap");
         ShadcnCharts.ring(
           ringWrap,
@@ -1457,7 +1510,6 @@
             total: 100,
             gapDeg: 0,
             key: "card-mem",
-            center: { value: dashPct(fast.mem.percent), label: "内存" },
           },
         );
         memBody.appendChild(ringWrap);
@@ -1687,7 +1739,11 @@
                 key: "up",
                 tone: "b",
                 lineClass: "dash-line-up dash-line-b",
-                areaClass: "dash-area-up dash-area-b",
+                // 上行不画面积填充。两条序列的面积都按 objectBoundingBox 锚定
+                // 在各自包围盒顶边（adr/0009），叠在一起时重叠区会合成一块
+                // 灰蓝板，而上行那条蓝线（L 0.70）正好压在同色相的填充上，
+                // 读不出走向。只保留下行的填充，上行用线本身表达。
+                areaClass: null,
               },
             ],
             {
@@ -1860,7 +1916,11 @@
           {
             size: 104,
             thickness: 13,
-            cap: "round",
+            // `butt`, not `round`: at r≈40 a round cap adds ~9.3° at each end
+            // of every arc, so a 3° gap is completely swallowed and the five
+            // protocol sectors merge into one continuous ring. Butt caps make
+            // the gap the thing you actually see.
+            cap: "butt",
             gapDeg: 3,
             key: "card-protos",
             center: { value: dashBytes(totalBytes), label: "合计" },

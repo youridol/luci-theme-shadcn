@@ -27,10 +27,13 @@ table.table,
     @apply font-semibold;
   }
 
+  /* A mobile card's row label. It is a label, not a heading: the value beside
+     it is what the row is for, so it takes the table header's own treatment
+     (text-sm font-medium) rather than a second, heavier one. */
   .cbi-section-table-titles.named,
   .cbi-section-table-descr.named,
   .cbi-section-table-row[data-title] {
-    @apply before:border-border before:table-cell before:border-b before:px-2 before:py-2 before:align-middle before:text-sm before:font-semibold before:content-[attr(data-title)];
+    @apply before:border-border before:table-cell before:border-b before:px-2 before:py-2 before:align-middle before:text-sm before:font-medium before:content-[attr(data-title)];
     &:not([data-title]),
     &:has(td.cbi-section-table-titles) {
       @apply before:content-none;
@@ -50,7 +53,14 @@ table.table,
 
   tr,
   .tr {
-    @apply hover:bg-muted max-md:border-border table-row [transition:background-color_.15s] max-md:flex max-md:flex-wrap max-md:border-b max-md:px-2 max-md:py-2;
+    /* Hover is `--accent`, the same hover surface every button, menu row and
+       sidebar item uses. It used to be `bg-muted`, which was the same literal as
+       `--accent` and `--secondary`, so hovering a row changed nothing; and
+       `bg-muted-a30` cannot be used here either because the zebra rows below
+       already paint that exact fill (hovering a striped row would have been
+       invisible). `--accent` is one clear step above both the card bed and the
+       zebra tint. */
+    @apply hover:bg-accent max-md:border-border table-row [transition:background-color_.15s] max-md:flex max-md:flex-wrap max-md:border-b max-md:px-2 max-md:py-2;
 
     &:first-child {
       &:not([data-title]) {
@@ -202,13 +212,11 @@ table.table th[data-sortable-row="true"],
 }
 
 .shadcn-sort-menu-btn {
-  @apply border-border bg-card text-foreground hover:bg-muted focus-visible:ring-ring inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium [transition:background-color_.15s] focus-visible:ring-2 focus-visible:outline-none;
+  @apply border-border bg-card text-foreground hover:bg-accent focus-visible:border-ring focus-visible:ring-ring-a50 inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium [transition:background-color_.15s,border-color_.15s] focus-visible:ring-[3px] focus-visible:outline-none;
 }
 
 .shadcn-sort-menu-list {
-  /* 用 bg-popover + text-foreground：主题里没有 popover-foreground 这个
-     工具类（tokens 只有 --popover 底色），写它会直接让构建失败。 */
-  @apply border-border bg-popover text-foreground absolute top-full right-0 z-30 mt-1 max-h-64 min-w-40 overflow-y-auto rounded-md border p-1 shadow-lg;
+  @apply border-border bg-popover text-popover-foreground absolute top-full right-0 z-30 mt-1 max-h-64 min-w-40 overflow-y-auto rounded-md border p-1 shadow-lg;
 
   &[hidden] {
     @apply hidden;
@@ -216,5 +224,5 @@ table.table th[data-sortable-row="true"],
 }
 
 .shadcn-sort-menu-item {
-  @apply text-foreground hover:bg-muted focus-visible:bg-muted block w-full rounded-sm px-2 py-1.5 text-left text-xs whitespace-nowrap focus-visible:outline-none;
+  @apply text-popover-foreground hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground block w-full rounded-sm px-2 py-1.5 text-left text-xs whitespace-nowrap focus-visible:outline-none;
 }

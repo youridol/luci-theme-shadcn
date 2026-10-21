@@ -2,7 +2,15 @@
    Official default variant in dark mode is white-on-black: bg-primary is the
    near-white oklch(0.922 0 0) and primary-foreground the near-black
    oklch(0.205 0 0), so every "primary action" surface below is a white button.
-   Sizing follows the official scale: h-9 default, h-8 sm, rounded-md, gap-2. */
+   Sizing follows the official scale: h-9 default, h-8 sm, rounded-md, gap-2.
+
+   Focus is the one rule stated once for the whole family: the official
+   `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`
+   written against this theme's tokens. It was missing entirely, so buttons were
+   the only keyboard-reachable control in the theme with no visible focus — every
+   input, select, tab and the log viewer already had one. `ring-a50` is used as
+   the halo and `border-ring` (full alpha) as the edge, so the indicator clears
+   WCAG 1.4.11 even where the 50% halo alone would not. */
 button,
 input[type="button"],
 input[type="submit"],
@@ -10,9 +18,19 @@ input[type="reset"],
 .btn,
 .cbi-button {
   @apply inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium whitespace-nowrap [transition:color_.15s,background-color_.15s,border-color_.15s,box-shadow_.15s];
+  @apply focus-visible:border-ring focus-visible:ring-ring-a50 focus-visible:ring-[3px] focus-visible:outline-none;
 
   &[disabled] {
     @apply pointer-events-none cursor-not-allowed opacity-50;
+  }
+
+  /* Official `has-[>svg]:px-3`: a button with an icon keeps the icon gap as its
+     inset instead of stacking 16px of padding beside it. LuCI buttons carry
+     their icons as `img`/mask boxes rather than `svg`, so both are covered. */
+  &:has(> svg),
+  &:has(> img),
+  &:has(> .shadcn-icon) {
+    @apply px-3;
   }
 
   .td & {
@@ -20,7 +38,13 @@ input[type="reset"],
   }
 }
 
-/* secondary — the official "outline/ghost" grey used for plain actions */
+/* secondary — the official "outline/ghost" grey used for plain actions.
+   `cbi-button-neutral` is LuCI's *neutral* button (pagination arrows, plain
+   dialog actions), not an "info" variant: it belongs to this family. Listing it
+   explicitly keeps a future semantic variant from capturing it by name — an
+   `info` rule keyed on the word "neutral" turned every pager arrow into a solid
+   blue block. `cbi-button-positive` / `-fieldadd` / `-save` join it for the
+   reason stated below. */
 .btn,
 .cbi-button,
 .cbi-button-default,
@@ -28,7 +52,11 @@ input[type="reset"],
 .cbi-button-find,
 .cbi-button-link,
 .cbi-button-up,
-.cbi-button-down {
+.cbi-button-down,
+.cbi-button-neutral,
+.cbi-button-positive,
+.cbi-button-fieldadd,
+.cbi-button-save {
   @apply border-input bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground;
 }
 
@@ -46,17 +74,17 @@ input[type="reset"],
   @apply border-primary bg-primary text-primary-foreground hover:bg-primary-hover;
 }
 
-/* positive/save — a tinted primary, kept distinct from the solid white one */
-.cbi-button-positive,
-.cbi-button-fieldadd,
-.cbi-button-save {
-  @apply border-primary-a25 bg-primary-a15 text-primary hover:bg-primary-a25;
-}
+/* positive/save — see the secondary family above; it is a member of it. */
 
-/* destructive — official destructive red */
+/* destructive — the official destructive red at the lightness that lets
+   near-white text clear AA. The official dark value paints the destructive
+   colour at 60% alpha, which is 10.4:1 on the canvas but only because the
+   canvas is near-black; this theme states the resulting colour
+   (--destructive-strong, 4.92:1 with near-white) so the button reads the same
+   over a card as over the page. */
 .cbi-button-negative,
 .cbi-section-remove .cbi-button,
 .cbi-button-reset,
 .cbi-button-remove {
-  @apply border-destructive bg-destructive text-destructive-fg hover:bg-destructive-a90;
+  @apply border-destructive-strong bg-destructive-strong text-destructive-fg hover:bg-destructive-a90;
 }

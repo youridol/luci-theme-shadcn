@@ -27,7 +27,7 @@
     --tw-enter-scale: 95%;
 
     h4 {
-      @apply mb-0 text-center;
+      @apply mb-0 text-center text-lg leading-none font-semibold tracking-tight;
       em {
         @apply text-foreground font-semibold;
       }
@@ -46,7 +46,7 @@
     }
 
     label.btn {
-      @apply border-input bg-input-a30 text-foreground hover:bg-accent hover:text-accent-foreground border;
+      @apply border-input bg-input-fill text-foreground hover:bg-accent hover:text-accent-foreground border;
     }
 
     pre {
@@ -82,13 +82,13 @@
       }
 
       ins {
-        @apply border-success bg-success-a80 text-success-fg rounded border;
+        @apply border-success bg-success text-success-fg rounded-sm border;
       }
       del {
-        @apply border-destructive bg-destructive-a80 text-destructive-fg rounded border;
+        @apply border-destructive-strong bg-destructive-strong text-destructive-fg rounded-sm border;
       }
       var {
-        @apply border-info bg-info-a80 text-info-fg rounded border;
+        @apply border-info bg-info text-info-fg rounded-sm border;
       }
 
       .uci-change-legend {
@@ -100,7 +100,7 @@
           ins,
           del,
           var {
-            @apply flex h-6 min-w-6 items-center justify-center rounded px-2 text-xs font-semibold;
+            @apply flex h-6 min-w-6 items-center justify-center rounded-sm px-2 text-xs font-semibold;
           }
         }
       }
@@ -121,7 +121,7 @@
         }
 
         var {
-          @apply inline-block rounded px-1.5 py-0.5 text-sm;
+          @apply inline-block rounded-sm px-1.5 py-0.5 text-sm;
           ins,
           del {
             @apply ml-1 inline-block px-1 py-px text-xs;
