@@ -4,6 +4,69 @@
 - `sidebar-shadcn.js`: state machine for theme (light/dark/device), sidebar collapse/expand, accordion, and mobile drawer — exposed as `window.ShadcnSidebar` after the `shadcn-sidebar-ready` event fires.
 - `menu-shadcn.js`: resolves the `admin` branch of `ui.menu.load()`, then renders a two-level sidebar; `ICON_MAP` maps a LuCI menu node's `name` to `/shadcn/icons/*.svg`; deeper levels render as `#tabmenu`. `syncRoute()` re-marks the active sidebar item (same longest-link-prefix rule as the header.ut replay), breadcrumb and tabs from `L.env` after a [router](router.md) swap without rebuilding the sidebar; `closeSurfaces()` closes palette/drawer/popover.
 
+## 桌面侧边栏：默认收起，悬浮展开，点击钉住
+
+三种状态，由两个属性分工表达：
+
+| 状态         | `#sidebar[data-collapsed]` | `html[data-sidebar-floating]` | 宽度  | 占位                         |
+| ------------ | -------------------------- | ----------------------------- | ----- | ---------------------------- |
+| 收起（默认） | `true`                     | 无                            | 48px  | 是（3rem 图标轨）            |
+| 悬浮展开     | `false`                    | `true`                        | 256px | **否**（绝对定位盖在内容上） |
+| 固定展开     | `false`                    | 无                            | 256px | 是                           |
+
+**为什么悬浮展开必须脱离文档流。** `body` 是 flex 行，侧边栏是它的 flex 项，
+`#main-wrapper` 是 `flex-1`。悬浮展开若走正常流，侧边栏一宽主内容就跟着缩，
+指针每次扫过侧边栏整页重排一次 —— 比一直展开更烦人。加上 floating 之后它
+`position: absolute` 盖上去，`#main-wrapper` 自己补满整行，布局完全不动。
+实测：悬浮时 `#main-wrapper` 的 `left` 保持 0、宽度保持 1400；固定展开时
+才变成 `left: 256` / 宽 1144。
+
+**为什么 `floating` 挂在 `<html>` 而不是 `#sidebar`。** CSS 规则写作
+`html[data-sidebar-floating="true"] #sidebar`。第一版把属性写在 `#sidebar` 上，
+属性值对了但选择器匹配不到，`position` 仍是 `static`，主内容照样被挤动。
+
+**悬浮只用 JS 置位，不写 `:hover`。** `data-collapsed` 还要给折叠面板与手风琴
+读；如果 CSS 用 `:hover` 判断、JS 用属性判断，两套判据会各说各话（CSS 认为在
+悬浮、JS 认为已收起）。所以统一由 `_applyCollapsed()` 写两个属性，CSS 只认属性。
+
+**悬浮展开不播宽度过渡。** `_applyCollapsed(…, {animate:false})` 会摘掉
+`data-sidebar-anim`；200ms 的宽度动画在指针划过去时既拖沓，又让浮层跟不上指针。
+点按钮的固定展开才播。
+
+**持久化只记「固定展开」**，键 `shadcn.sidebar.pinned`。悬浮是瞬时状态，写进
+存储会让刷新后的状态取决于上次指针停在哪里。旧键 `shadcn.sidebar` 存的是
+「是否收起」，语义相反，不迁移 —— 读它只会让曾经收起过的用户「恰好」符合新默认。
+
+`header.ut` 的预绘制脚本读同一个键，否则首帧画成展开、随后跳回收起。
+
+### 退场：先看指针去了哪，再决定收不收
+
+子菜单抽屉挂在 `body` 上、贴着侧边栏右缘（`left = 侧边栏 right`）。两者不重叠，
+所以「从侧边栏内的菜单项水平右移到抽屉」**必然**先经过一次 `pointerleave`。
+
+第一版收到 `pointerleave` 就立刻收起，结果是抽屉还开着、侧边栏却缩回图标轨
+（截图里那个状态），随后抽屉失去依托也关掉 —— 二级菜单根本点不到。
+
+现在的退场判定分三步：
+
+1. `pointerleave` 不直接收，起一个 120ms 宽限计时（`_scheduleLeave`）；
+2. 计时到期时看指针坐标是否落在抽屉/收起态浮层的矩形内（`_pointerOverPanel`），
+   在框里就不收；
+3. 指针从抽屉直接移向内容区时，抽屉自己的 `pointerout` 会重新排一次收起 ——
+   少了这一条，侧边栏早就不再收到 `pointerleave`（指针本就不在侧边栏里），
+   抽屉会永远挂着。
+
+**为什么用坐标而不是 `:hover`。** 宽限期只有一帧级别，而浏览器把指针标记为
+`:hover` 需要先派发过对应的 `pointerover`。实测在「离开侧边栏、进入抽屉」这一次
+跨越里，120ms 到期时 `#sidebar-subdrawer:hover` 还是 `false`（指针坐标已在抽屉内，
+hover 状态没落地），于是误判成「没在面板上」直接收起。矩形判断不依赖事件时序。
+为此 `_initHoverExpand` 在 `document` 上挂了一个 `pointermove` 记录 `this._pointer`。
+
+**点二级项之后收整层浮面。** `menu-shadcn.js` 的链接点击调
+`ShadcnSidebar.collapseAfterNavigate()`：关抽屉 + 收起侧边栏。它**不动 pinned** ——
+用户先前点按钮钉住的偏好不该被一次导航改掉，所以只在「不是固定展开」时才收。
+收起时 `_applyCollapsed` 还会顺手 `closeSubDrawer()`，保证两层浮面要么都开、要么都关。
+
 ## Row rhythm and the three surface states
 
 ## 子菜单：抽屉，不是手风琴

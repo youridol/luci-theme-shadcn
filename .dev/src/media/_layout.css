@@ -25,6 +25,18 @@
   }
 }
 
+/* 桌面侧边栏三态：收起（默认）· 悬浮展开 · 固定展开。
+
+   收起是默认：3rem 图标轨，把横向空间让给内容。这是「概览看板」这类页面的
+   常态 —— 打开就是读数据，不是切菜单。
+
+   悬浮展开用绝对定位覆盖在内容之上，**不参与 flex 布局**。如果悬浮展开走
+   正常文档流，侧边栏一宽主内容就跟着缩，指针每次扫过侧边栏整页都会重排一次，
+   那比收起更烦人。固定展开（点过按钮）才占位，因为那时用户明确要它一直开着。
+
+   判据是 html 上的 data-sidebar-collapsed，与 sidebar-shadcn.js 写的一致：
+   收起与「悬浮展开」都算 collapsed=true（侧边栏不占位），区别只在宽度。 */
+
 html[data-sidebar-collapsed="true"] #sidebar {
   @apply md:w-12;
 
@@ -41,6 +53,44 @@ html[data-sidebar-collapsed="true"] #sidebar {
 
   .sidebar-accordion-sub {
     @apply md:!hidden;
+  }
+}
+
+/* 悬浮展开：指针停在收起态侧边栏上时铺开。
+
+   JS 置 data-floating，这里负责形状。absolute + 高度撑满 + 抬高 z 层，
+   于是它浮在内容上而不挤动内容 —— 走正常文档流的话，指针每次扫过侧边栏
+   主内容都会缩一次，整页重排，比收起更烦人。
+
+   宽度 w-64 与固定展开一致，展开后的观感和点按钮展开相同。
+
+   这里不写 :hover：hover 只由 CSS 判断，而 JS 同时要改 data-collapsed 给
+   折叠面板与手风琴读。两套判据各管一段会让状态对不上（CSS 认为在悬浮、
+   JS 认为已收起），所以统一由 JS 置位，CSS 只认属性。 */
+html[data-sidebar-floating="true"] #sidebar {
+  @apply md:w-64;
+
+  /* 浮起时必须有底色与投影：它盖在内容上，没有边界文字会糊成一片。 */
+  @apply md:z-30 md:shadow-lg;
+
+  /* 脱离文档流。body 是 flex 行，侧边栏变成 absolute 后 #main-wrapper
+     (flex-1) 会自己补满整行宽度 —— 于是内容不缩、不重排，侧边栏盖在上面。
+     top/left 固定为 0，高度由 inset-y-0 撑满视口。 */
+  @apply md:absolute md:top-0 md:left-0 md:h-dvh;
+
+  /* 覆盖收起态的隐藏规则，把文字与箭头放回来。 */
+  .sidebar-brand-text,
+  .sidebar-chevron,
+  .icon-collapse {
+    @apply md:block;
+  }
+
+  .sidebar-label {
+    @apply md:block md:flex-1 md:truncate;
+  }
+
+  .icon-expand {
+    @apply md:hidden;
   }
 }
 

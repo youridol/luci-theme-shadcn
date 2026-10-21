@@ -83,8 +83,12 @@
 		<script>
 			(function () {
 				document.documentElement.setAttribute('data-darkmode', 'true');
-				var collapsed = localStorage.getItem('shadcn.sidebar') === 'true';
-				document.documentElement.setAttribute('data-sidebar-collapsed', collapsed ? 'true' : 'false');
+				/* Sidebar rests collapsed; only an explicitly pinned sidebar is
+				   drawn expanded. Must match SIDEBAR_PINNED_KEY in
+				   sidebar-shadcn.js, or the first paint disagrees with the state
+				   the module applies a moment later and the rail visibly jumps. */
+				var pinned = localStorage.getItem('shadcn.sidebar.pinned') === 'true';
+				document.documentElement.setAttribute('data-sidebar-collapsed', pinned ? 'false' : 'true');
 			})();
 		</script>
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">

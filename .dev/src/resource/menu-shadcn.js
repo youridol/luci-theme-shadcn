@@ -557,7 +557,18 @@ return baseclass.extend({
         link.href = a.getAttribute("href");
         link.textContent = a.textContent;
         link.setAttribute("role", "menuitem");
-        link.addEventListener("click", () => this.closeSubDrawer());
+        /* 点了二级项就把这一整层浮面收掉：抽屉 + 悬浮展开的侧边栏。
+
+           只关抽屉会把指针留在「已经不和任何东西相关」的展开侧边栏上 —— 用户
+           选完了，画面上却还摊着两层菜单。导航本身由链接完成，这里只负责让
+           界面回到收起态。
+
+           交给 sidebar-shadcn 处理而不是直接改属性：折叠状态、floating、
+           存储都在那一侧，这里只发一个语义动作。 */
+        link.addEventListener("click", () => {
+          this.closeSubDrawer();
+          window.ShadcnSidebar?.collapseAfterNavigate?.();
+        });
         panel.appendChild(link);
       }
 
