@@ -38,6 +38,69 @@ to the admin layout it is modelled on.
 
 ### Changed
 
+- **The desktop sidebar now rests collapsed and expands on hover.** It opens
+  when the pointer enters the rail and collapses when it leaves, so glancing at
+  the menu no longer costs a click. Hover expansion is `position: absolute` over
+  the content rather than in flow: in flow, every sweep of the pointer resized
+  `#main-wrapper` and reflowed the whole page. Clicking the toggle _pins_ it
+  open instead (stored in `shadcn.sidebar.pinned`); hovering is transient and is
+  never persisted, so a reload does not depend on where the pointer last sat.
+  The old `shadcn.sidebar` key held the opposite meaning and is not migrated.
+  Two attributes carry the state: `#sidebar[data-collapsed]` for whether the
+  content is laid out, and `html[data-sidebar-floating]` for whether it is out
+  of flow — the second has to live on `<html>` because that is what the
+  selector matches.
+- **The hover-expanded sidebar no longer collapses out from under its sub-menu.**
+  The sub-drawer sits flush against the sidebar's right edge but does not overlap
+  it, so moving the pointer from a menu row into the drawer always fires a
+  `pointerleave` first. Collapsing on that event left the drawer floating beside
+  a 48 px icon rail, and it then closed itself — the sub-items were unreachable.
+  Leaving now starts a 120 ms grace timer, and the collapse is skipped when the
+  pointer's coordinates land inside the drawer or the collapsed-popover rect.
+  Coordinates rather than `:hover`, because hover state has not landed yet one
+  frame after the pointer crosses. Leaving the drawer schedules the collapse
+  again, so it cannot hang open. Picking a sub-item closes both surfaces via
+  `collapseAfterNavigate()`, which deliberately leaves `pinned` alone.
+- **Every dashboard chart was redrawn** (`.dev/docs/adr/0008-chart-motion-and-flat-bars.md`).
+  Lines are monotone-cubic curves with a "now" endpoint marker instead of
+  polylines; bars have a rounded top and a full-height rail per slot; the
+  hourly chart is flat columns with the peak lifted, replacing the isometric
+  three-face bars (so `adr/0007`'s one 3D use is gone); rings are stroked arcs
+  with real angular gaps, a centre reading and, for memory, a single used arc
+  over a track instead of two colliding wedges; rank rows are 4px round-capped
+  strokes.
+- **Charts morph between samples instead of jumping.** A module-level map in
+  `_charts.js` keeps the previous numbers (keyed by card, not by row index, so
+  a re-ordered ranking does not tween one host's bar into another's) and tweens
+  the geometry over 420 ms. A first paint still draws itself in once; the
+  `dash-enter` class is removed after 700 ms so a browser that never runs the
+  animation cannot leave the line invisible. `prefers-reduced-motion` writes
+  the final geometry with no tween.
+- **The ports card's download and upload lines now share one y-scale.** They
+  were scaled independently, so upload looked as busy as download while
+  carrying a sixth of the traffic. The legend carries the current readings.
+- **The ports chart is a framed plot now, not a bare sparkline.** It has a
+  y-axis with three labelled ticks, dashed guides, a baseline, a vertical axis
+  line, a two-tick time axis (first and last sample), and an area fill that
+  fades from the series colour to transparent. Series colours come from the
+  semantic tokens: primary for download, `--info` for upload, `--success` and
+  `--warning` for a third and fourth series.
+- **Area fills use an SVG `<linearGradient>`** (`.dev/docs/adr/0009-svg-area-gradient.md`).
+  `adr/0003` bans CSS gradients and `scripts/check-built-css.js` enforces it;
+  this is a paint server, not a CSS gradient function, so the check still
+  passes. The colours stay in CSS: each `<stop>` is `stop-color: currentColor`
+  and the gradient element carries a `dash-grad-<tone>` class. A flat fill was
+  measured at 0.28 opacity against `oklch(0.205)` and was simply invisible.
+- **Axis labels are HTML, not SVG `<text>`.** The frame stretches with
+  `preserveAspectRatio="none"`, so on a wide card the horizontal scale is about
+  twice the vertical one and glyphs came out visibly wide and squat ("238M" as
+  a bold slab). Axis charts are wrapped in `.shadcn-dash-plot`; labels are
+  absolutely positioned at the exact fraction where their gridline runs.
+- **The y-axis rounds to binary steps** (1/2/5 × 1024ᵏ) instead of decimal
+  ones. A decimal "round" maximum of 1e11 printed as `93.1G` through the
+  1024-based formatter — the rounding bought nothing.
+- The protocol legend gained a colour dot per row plus its share, and the ring
+  centre shows the total.
 - **Root font size is 16px**, with body copy at 14px (was 14px root
   throughout). Every shell dimension is expressed in rem, so the old root made
   the whole chrome 12.5% smaller than the reference layout: a `16rem` sidebar
@@ -55,7 +118,9 @@ to the admin layout it is modelled on.
 - **The light colour scheme.** `data-darkmode="true"` is set unconditionally
   before paint and `shadcn.theme` is deleted from localStorage rather than
   read, so a browser that once chose light lands on dark with no flash.
-- **All gradients**, including the token helpers that produced them.
+- **All gradients**, including the token helpers that produced them. One
+  exception was later carved out for chart area fills: an SVG paint server
+  whose colours come from CSS (`adr/0009`). CSS gradient functions stay banned.
 - `<img>`-based icons on the shell: every icon is a mask box tinted with
   `currentColor`, so one asset serves every tone.
 
@@ -69,6 +134,28 @@ to the admin layout it is modelled on.
 - DNS diagnostics read the resolver's own `Address:` line as the answer.
 - The internet reachability probe used a resolver that is dropped on some
   lines, reporting "no internet" on a healthy connection.
+- Rank-row host links sat in the middle of their cell: the theme's global
+  `button` rule centres its content with `display: inline-flex`, which
+  `text-align: left` cannot undo. The dashboard now resets
+  `justify-content` on those buttons.
+- The sparkline endpoint marker rendered as a 28×12 ellipse: the chart's
+  `preserveAspectRatio="none"` squashes a `<circle>`. It is now a zero-length
+  stroke with a round cap and `non-scaling-stroke`.
+- `main.css` carried four utilities nothing uses (`.transform`, `.filter`,
+  `.scheme-light`, `.bg-popover`) plus the `--tw-rotate-*` / `--tw-drop-shadow-*`
+  property blocks they register. Tailwind's `@source not "../../docs/*.md"`
+  only excluded the top level, so a code span in an ADR (`transform: scaleY()`)
+  was being compiled into the shipped stylesheet. The exclusion now covers
+  `docs/**/*.md`, and main.css drops ~1.3 KB.
+- **`table-sort` no longer throws `factory yields invalid constructor`.** The
+  module ended with `return function tableSort() {}` — a plain function. LuCI
+  gates every `L.require()` result on `Class.isSubclass(v)`, i.e.
+  `typeof v === 'function' && v.prototype instanceof Class`, so a bare function
+  fails the check and the TypeError aborts the rest of that page's scripts. It
+  now returns `baseclass.extend({ __init__() { … } })`, matching
+  `sidebar-shadcn.js` and `router-shadcn.js`. The contract is easy to get
+  backwards: `require()` itself does `new _class()`, so the return value must be
+  the **class**, and `__init__` is where the work belongs.
 
 ### Notes
 
