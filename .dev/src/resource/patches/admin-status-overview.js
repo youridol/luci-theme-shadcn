@@ -342,6 +342,37 @@
     return dashBytes(v) + "/s";
   }
 
+  /* 横轴用的时钟标签：`13:20:56`。
+
+     只到秒，不带日期：这张图的时间跨度最多两分钟，跨天时日期反而占地方；
+     真要看日期，看板上方已有「最近更新」。 */
+  function dashClock(ms) {
+    if (!ms) return "";
+    const d = new Date(ms);
+    const p = function (v) {
+      return (v < 10 ? "0" : "") + v;
+    };
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  /* 坐标轴刻度专用的速率格式：`4.8M` / `620K` / `0`。
+
+     为什么不复用 dashRate：图表的纵轴标签在刻度栏里只有约 2.6em 宽，
+     `4.8 MB/s` 会压到曲线上。轴标签只需要「量级 + 数」，单位在图例与端口
+     列表里已经写全了。 */
+  function dashRateAxis(v) {
+    if (v == null || !isFinite(v) || v <= 0) return "0";
+    if (v < 1024) return Math.round(v) + "B";
+    const units = ["K", "M", "G", "T"];
+    let x = v / 1024;
+    let i = 0;
+    while (x >= 1024 && i < units.length - 1) {
+      x /= 1024;
+      i++;
+    }
+    return (x >= 100 ? x.toFixed(0) : x.toFixed(1)) + units[i];
+  }
+
   // 从能力探测给的网口名里挑出 WAN。
   //
   // 后端只回报端口名（caps.ports），不认识「哪条是 WAN」—— 那取决于拨号
@@ -417,6 +448,13 @@
     conns: [],
     mem: [],
   };
+
+  /* 每个样本的时间戳，与 dashSeries.up / down 一一对应。
+
+     横轴刻度要标「这张图画的是哪段时间」，就不能用「样本数 × 当前间隔」
+     倒推：降档时间隔会变（1s → 2s → 5s…），倒推出来的起点是错的。所以
+     每次推样本时记一个真实时间，横轴直接用首尾两个。 */
+  const dashTimes = [];
 
   let dashBoard = null;
   let dashFastTimer = null;
@@ -1001,6 +1039,7 @@
       dashDraw(wanTile, function (slot) {
         ShadcnCharts.sparkline(slot, dashSeries.down.slice(-60), {
           h: 30,
+          key: "tile-wan",
           lineClass: "dash-line",
           areaClass: "dash-area",
         });
@@ -1039,7 +1078,7 @@
             dashSeries.conns.slice(-40).map(function (v) {
               return { value: v == null ? 0 : v };
             }),
-            { h: 30, barClass: "dash-bar" },
+            { h: 30, key: "tile-conns", barClass: "dash-bar", track: true },
           );
         });
       } else {
@@ -1079,12 +1118,12 @@
         // 24 桶数据，但不画轴、不画标签。
         dashDraw(todayTile, function (slot) {
           const buckets = dashHourly(hist.points);
-          ShadcnCharts.isoBars(
+          ShadcnCharts.hourBars(
             slot,
             buckets.map(function (b) {
-              return { value: b.empty ? null : b.bytes };
+              return { value: b.bytes, empty: b.empty };
             }),
-            { w: 100, h: 26, depth: 2 },
+            { w: 100, h: 26, gap: 0.4, peak: false, key: "tile-today" },
           );
         });
       } else {
@@ -1130,6 +1169,7 @@
       dashDraw(rateTile, function (slot) {
         ShadcnCharts.sparkline(slot, dashSeries.down.slice(-60), {
           h: 30,
+          key: "tile-rate",
           lineClass: "dash-line",
           areaClass: "dash-area",
         });
@@ -1345,6 +1385,8 @@
 
         ShadcnCharts.sparkline(cpuBody, dashSeries.cpu.slice(-60), {
           h: 34,
+          key: "card-cpu",
+          grid: 2,
           lineClass: "dash-line",
           areaClass: "dash-area",
         });
@@ -1398,17 +1440,25 @@
         );
         memBody.appendChild(row);
 
+        /* 内存环形图：一条已用弧 + 一圈轨道，中心写占用百分比。
+
+           早先是「空闲 / 已用」两个扇区拼满整圈 —— 两个纯色块相撞，读者
+           要自己去分辨哪一块才是已用，而环形图的整个意义是「一眼看出比例」。
+           现在轨道承担「剩余」的语义（弱色），弧只画已用，中心数字直接给出
+           读数，图例因此可以删掉。 */
         const ringWrap = dashEl("div", "shadcn-dash-ring-wrap");
         ShadcnCharts.ring(
           ringWrap,
-          [
-            {
-              value: Math.max(0, 100 - fast.mem.percent),
-              class: "dash-ring-free",
-            },
-            { value: Math.max(0, fast.mem.percent), class: "dash-ring-used" },
-          ],
-          { size: 72, thickness: 9 },
+          [{ value: Math.max(0, fast.mem.percent), class: "dash-ring-used" }],
+          {
+            size: 76,
+            thickness: 8,
+            cap: "round",
+            total: 100,
+            gapDeg: 0,
+            key: "card-mem",
+            center: { value: dashPct(fast.mem.percent), label: "内存" },
+          },
         );
         memBody.appendChild(ringWrap);
 
@@ -1586,21 +1636,73 @@
           return n !== "lo";
         });
         if (names.length) {
+          /* 两条序列画在同一套坐标里。
+
+             原来是两次 sparkline 调用、各自算各自的 y 范围 —— 两条线的纵轴
+             不同，视觉上「上行贴着下行」纯属巧合，读不出上下行谁大。多序列
+             版本共用一次 extent()，上下行因此可以真的横向比较。
+
+             图例同时给出当前读数：波形只有形状，数字要落到具体的值。 */
           const legend = dashEl("div", "shadcn-dash-legend");
-          legend.appendChild(dashEl("span", "shadcn-dash-legend-down", "下行"));
-          legend.appendChild(dashEl("span", "shadcn-dash-legend-up", "上行"));
+          const downItem = dashEl("span", "shadcn-dash-legend-down", "下行");
+          downItem.appendChild(
+            dashEl(
+              "strong",
+              "shadcn-dash-legend-value",
+              dashRate(dashSeries.down[dashSeries.down.length - 1]),
+            ),
+          );
+          const upItem = dashEl("span", "shadcn-dash-legend-up", "上行");
+          upItem.appendChild(
+            dashEl(
+              "strong",
+              "shadcn-dash-legend-value",
+              dashRate(dashSeries.up[dashSeries.up.length - 1]),
+            ),
+          );
+          legend.appendChild(downItem);
+          legend.appendChild(upItem);
           portBody.appendChild(legend);
 
-          ShadcnCharts.sparkline(portBody, dashSeries.down.slice(-90), {
-            h: 40,
-            lineClass: "dash-line",
-            areaClass: "dash-area",
-          });
-          ShadcnCharts.sparkline(portBody, dashSeries.up.slice(-90), {
-            h: 40,
-            lineClass: "dash-line-up",
-            areaClass: "dash-area-up",
-          });
+          /* 坐标框：参考设计里的波形是「有坐标轴的图」，不是无框火花线。
+
+             纵轴三个刻度（0 / 中值 / 峰值）。刻度标签必须短：`4.8 MB/s`
+             这种完整读数在刻度栏里会互相压字，所以用 dashRateAxis 压成
+             `4.8M` / `620K`；完整单位在图例里。
+
+             横轴给首尾两个时间：跨度直接读出来，不用数格子。 */
+          const span = dashTimes.slice(-90);
+          ShadcnCharts.multiLine(
+            portBody,
+            [
+              {
+                values: dashSeries.down.slice(-90),
+                key: "down",
+                tone: "a",
+                lineClass: "dash-line dash-line-a",
+                areaClass: "dash-area dash-area-a",
+              },
+              {
+                values: dashSeries.up.slice(-90),
+                key: "up",
+                tone: "b",
+                lineClass: "dash-line-up dash-line-b",
+                areaClass: "dash-area-up dash-area-b",
+              },
+            ],
+            {
+              w: 100,
+              h: 56,
+              key: "card-ports",
+              axis: true,
+              ticks: 2,
+              yLabels: dashRateAxis,
+              xLabels:
+                span.length > 1
+                  ? [dashClock(span[0]), dashClock(span[span.length - 1])]
+                  : null,
+            },
+          );
 
           const list = dashEl("div", "shadcn-dash-portlist");
           for (const n of names) {
@@ -1632,19 +1734,23 @@
       const hist = slow && slow.history;
       if (hist && hist.available && hist.points.length > 1) {
         const buckets = dashHourly(hist.points);
-        // 空小时的 value 传 null：isoBars 会跳过它（不画一根 0 高的柱子冒充
-        // 「这个小时没有流量」），轴标签仍然占位，所以 24 格的尺度恒定。
-        ShadcnCharts.isoBars(
+        /* 24 根平面圆角柱 + 每格一条淡轨道 + 峰值柱单独高亮。
+
+           空小时的 value 传 null：图表不画一根 0 高的柱子冒充「这个小时没有
+           流量」，但轨道与轴标签仍然占位，所以 24 格的尺度恒定、跨时间可比。 */
+        ShadcnCharts.hourBars(
           hourBody,
           buckets.map(function (b) {
-            return { value: b.empty ? null : b.bytes };
+            return { value: b.bytes, empty: b.empty };
           }),
-          { w: 100, h: 40, depth: 3 },
+          { w: 100, h: 44, key: "card-hours" },
         );
 
         const axis = dashEl("div", "shadcn-dash-axis");
-        for (const b of buckets)
-          axis.appendChild(dashEl("span", null, b.label));
+        for (const b of buckets) {
+          const tick = dashEl("span", b.empty ? "is-empty" : null, b.label);
+          axis.appendChild(tick);
+        }
         hourBody.appendChild(axis);
       } else {
         hourBody.appendChild(
@@ -1694,7 +1800,9 @@
           );
 
           const track = dashEl("div", "shadcn-dash-ranktrack");
-          ShadcnCharts.rankBar(track, h.b, max);
+          // key 用主机地址：排行顺序会变，用行号当 key 会让「第 1 名」的条
+          // 从上一次的数值补间到另一个人身上。
+          ShadcnCharts.rankBar(track, h.b, max, { key: "host:" + h.k });
           row.appendChild(track);
           hostBody.appendChild(row);
         }
@@ -1732,23 +1840,50 @@
       protoBody.textContent = "";
       const conns = slow && slow.conns;
       if (conns && conns.available && conns.compact.protos.length) {
+        const protos = conns.compact.protos;
+        const totalBytes = protos.reduce(function (sum, p) {
+          return sum + (isFinite(p.b) ? p.b : 0);
+        }, 0);
+
+        /* 环形图：扇区之间留 2° 真实缺口（不描边，描边会与扇区颜色打架），
+           中心写合计流量 —— 否则读者只能从图例把各项加起来才知道总量。 */
         const wrap = dashEl("div", "shadcn-dash-ring-wrap");
         ShadcnCharts.ring(
           wrap,
-          conns.compact.protos.map(function (p, i) {
-            return { value: p.b, class: "dash-ring-s" + (i % 5) };
+          protos.map(function (p, i) {
+            return {
+              value: p.b,
+              class: "dash-ring-s" + (i % 5),
+              key: p.k,
+            };
           }),
-          { size: 96, thickness: 16 },
+          {
+            size: 104,
+            thickness: 13,
+            cap: "round",
+            gapDeg: 3,
+            key: "card-protos",
+            center: { value: dashBytes(totalBytes), label: "合计" },
+          },
         );
         protoBody.appendChild(wrap);
 
         const legend = dashEl("div", "shadcn-dash-protolegend");
-        for (const p of conns.compact.protos) {
+        protos.forEach(function (p, i) {
           const row = dashEl("div", "shadcn-dash-protorow");
-          row.appendChild(dashEl("span", "shadcn-dash-protoname", p.k));
-          row.appendChild(dashEl("span", null, dashBytes(p.b)));
+          const name = dashEl("span", "shadcn-dash-protoname", p.k);
+          // 图例色点与扇区同色：没有色点，读者得靠顺序去猜哪个扇区是哪一项。
+          name.dataset.tone = "s" + (i % 5);
+          const share = totalBytes > 0 ? (p.b / totalBytes) * 100 : 0;
+          row.appendChild(name);
+          row.appendChild(
+            dashEl("span", "shadcn-dash-protoshare", dashPct(share)),
+          );
+          row.appendChild(
+            dashEl("span", "shadcn-dash-protobytes", dashBytes(p.b)),
+          );
           legend.appendChild(row);
-        }
+        });
         protoBody.appendChild(legend);
       } else {
         protoBody.appendChild(dashEl("p", "shadcn-dash-empty", "暂无协议数据"));
@@ -1814,6 +1949,9 @@
           }
           dashPush(dashSeries.up, up);
           dashPush(dashSeries.down, down);
+          // 时间戳与上下行同步推进：横轴只画这一对序列的时间跨度。
+          if (dashTimes.length >= DASH_SERIES_LEN) dashTimes.shift();
+          dashTimes.push(Date.now());
         }
       }
 
@@ -1980,6 +2118,9 @@
     if (view) delete view.dataset.dashboard;
     dashViewReady = false;
     for (const k in dashSeries) dashSeries[k].length = 0;
+    // 图表补间用的上一帧数值也要清掉：否则再次进入概览页时，新一帧会从上
+    // 一个会话留下的数字补间过来，看起来像流量在页面打开前就跳了一次。
+    ShadcnCharts.reset();
     dashSlow = null;
     dashCaps = null;
     dashLastError = null;

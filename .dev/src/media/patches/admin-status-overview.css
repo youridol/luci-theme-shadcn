@@ -889,12 +889,12 @@ html.shadcn-drawer-lock body {
    两行之间仍有高差（实测 420 对 381）。要四张完全一样高，得显式给两行
    指定同一个高度，所以用 grid-auto-rows 定死行高。
 
-   行高取实测值：定 352px（22rem）时 ports 的内容要 406px、hosts 要 367px，
-   两者都会溢出被裁。408px（25.5rem）刚好放下 ports 那条最高的内容，同时
-   hours / protos 的余量由各自的可伸缩元素吃掉。 */
+   行高按内容最高的两张量：Top 主机 6 行 + 标题实测 353px，协议环 + 5 行
+   图例实测 353px。22.5rem（360px）刚好容下，剩下 7px 给边框。图表两张
+   （端口流量 / 按小时）靠 flex 吃掉这 360px 里的余量，不靠行高去凑。 */
 #shadcn-dash-flow .shadcn-dash-grid {
   align-items: stretch;
-  grid-auto-rows: 25.5rem;
+  grid-auto-rows: 22.5rem;
 }
 
 #shadcn-dash-flow .shadcn-dash-card {
@@ -906,29 +906,37 @@ html.shadcn-drawer-lock body {
   flex: 1;
 }
 
-/* 端口流量：两条火花线拉高吃掉余量（viewBox 等比铺开，不失真）。
-   必须设上限：不加限制时 flex 会把每条拉到 120px（原 34px），两条就吃掉
-   240px，端口列表被挤到底边 —— 实测截图里图表占了半张卡。56px 是「看得出
-   波形走向、又不喧宾夺主」的折中。
+/* 端口流量：上下行现在画在同一张图里（共用一套纵轴），所以只有一张图要
+   拉伸。上限 196px：卡片行高 360px 时 body 实测 290px，图例 25 + 图 196 +
+   间距 8 + 端口列表 58 = 287，留 3px 余量。给到 200 时总高 291，列表下沿会
+   越过 body 1px（实测 list 底 915 / body 底 914）。
 
-   选择器前面加 #shadcn-dash-flow 是为了**提高特异性**而不是加语义：通用的
+   选择器指向 .shadcn-dash-plot 而不是 .shadcn-dash-chart：有坐标轴的图外面
+   包了一层（刻度栏是 HTML），要拉伸的是那一层。前面加 #shadcn-dash-flow 是
+   为了**提高特异性**而不是加语义 —— 通用的
    `.shadcn-dash-card-body > .shadcn-dash-chart { max-height: 120px }` 写在
    文件更后面，两边特异性相同时后者胜出，实测 max-height 会退回 120px。 */
 #shadcn-dash-flow
   [data-card="ports"]
   .shadcn-dash-card-body
-  > .shadcn-dash-chart {
+  > .shadcn-dash-plot {
   flex: 1;
-  height: auto;
-  min-height: 34px;
-  max-height: 56px;
+  min-height: 40px;
+  max-height: 196px;
 }
 
-/* 今日流量按小时：柱子同样可以加高，上限与资源区一致，避免一根柱子占满卡片。 */
+/* 今日流量按小时：24 根柱不能跟着卡片无限长高 —— 柱宽固定约 17px 时，
+   超过 200px 就会变成一排细长的针。所以图表有上限，剩下的高度由 body 居中
+   吸收：整组「图 + 刻度」落在卡片中间，而不是顶着标题、下面空一大块。 */
+[data-card="hours"] .shadcn-dash-card-body {
+  justify-content: center;
+}
+
 [data-card="hours"] .shadcn-dash-card-body > .shadcn-dash-chart {
-  flex: 1;
+  flex: 0 1 auto;
   height: auto;
-  max-height: 160px;
+  min-height: 44px;
+  max-height: 200px;
 }
 
 /* 协议分布：环形图本身固定尺寸，余量给到图例，让环形居中而不是顶到上面。 */
@@ -1078,8 +1086,21 @@ html.shadcn-drawer-lock body {
   letter-spacing: -0.01em;
 }
 
-/* ── 图表配色 ───────────────────────────────────────────────────────
-   所有图形都从这里取色：SVG 里没有写死的颜色，也没有渐变。 */
+/* ── 图表配色与动效 ───────────────────────────────────────────────────
+
+   所有图形都从这里取色：SVG 里没有写死的颜色，也没有渐变（adr/0003）。
+   深度、强调与层级一律靠 token 明度阶 + 1px 边框 + 投影表达。
+
+   这一版把图表的观感整体重做过（adr/0008）：
+     · 线条是平滑曲线 + 端点光点，不再是折线；
+     · 柱状图有背景轨道、圆角、峰值高亮，去掉了等距三面；
+     · 环形图是一条轨道 + 已用弧 + 中心读数，扇区之间留真实缺口；
+     · 排行条是圆头粗线，宽度随数值补间；
+     · 数值变化由 _charts.js 的帧补间完成，这里只负责颜色与首帧入场。
+
+   动效纪律：补间在 JS 里做（卡片内容每秒重建，CSS 入场动画会每秒重放
+   一次，看起来像闪），CSS 只承担「首次出现」的一次性动画。
+   prefers-reduced-motion 下两者都退化为静止终值。 */
 
 .shadcn-dash-chart {
   display: block;
@@ -1087,12 +1108,11 @@ html.shadcn-drawer-lock body {
   overflow: visible;
 }
 
-/* A chart with `preserveAspectRatio` (rings, gauges, the isometric bars) has
-   no intrinsic height of its own: with only `width: 100%` it grows to a
-   square of the container's width. On the device that turned the temperature
-   gauge into a 179px square inside a 34px slot, covering the tile's own text,
-   and the hourly bars into a 260px block. Every chart that is not explicitly
-   sized by its slot gets a bounded height here. */
+/* A chart with `preserveAspectRatio` (rings, gauges) has no intrinsic height
+   of its own: with only `width: 100%` it grows to a square of the container's
+   width. On the device that turned the temperature gauge into a 179px square
+   inside a 34px slot, covering the tile's own text. Every chart that is not
+   explicitly sized by its slot gets a bounded height here. */
 .shadcn-dash-spark {
   height: 34px;
 }
@@ -1128,161 +1148,463 @@ html.shadcn-drawer-lock body {
   justify-content: space-between;
 }
 
-/* The isometric hour bars need the extra height (24 slots + the sheared top
-   face), but still bounded, or one bar fills the whole card. */
-[data-card="hours"] .shadcn-dash-card-body > .shadcn-dash-chart {
-  max-height: 96px;
-}
+/* 今日流量按小时的上限见 `#shadcn-dash-flow` 那一组（那里同时管行高与
+   body 的居中），这里不再重复设值 —— 早先两处各写一个 max-height，后者
+   静默盖掉前者，实测图表停在 96px 而注释说的是 200px。 */
 
 .shadcn-dash-ring-wrap .shadcn-dash-chart {
   height: auto;
   max-height: 96px;
 }
 
+/* ── 线 ─────────────────────────────────────────────────────────────── */
+
+/* 序列色板。同一张图里的多条线用不同色相区分，色相全部取自语义 token，
+   不新增硬编码颜色：主色（近白）是默认序列，info（蓝）是次序列，success
+   （绿）与 warning（琥珀）用于第三、第四条。
+
+   为什么不都用一个颜色：参考设计里三色线并行，靠颜色分辨系列；单色系统
+   只能靠图例对线，而线又细又密，读起来很吃力。 */
 .dash-line {
   fill: none;
   stroke: var(--primary);
-  stroke-width: 1.5;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
+.dash-line-a {
+  stroke: var(--primary);
+}
+
+.dash-line-b {
+  stroke: var(--info);
+}
+
+.dash-line-c {
+  stroke: var(--success);
+}
+
+.dash-line-d {
+  stroke: var(--warning);
+}
+
+/* 旧类名保留：调用方（磁贴、CPU 卡）还在用 dash-line / dash-line-up，
+   没有理由为了改名动三处调用点。 */
 .dash-line-up {
   fill: none;
   stroke: var(--info);
-  stroke-width: 1.5;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
-.dash-area {
-  fill: var(--primary);
-  stroke: none;
-  opacity: 0.14;
+/* 面积填充用 SVG 渐变（见 adr/0009）。
+
+   颜色仍然全部来自 CSS：渐变本身不写 stop-color，而是让每个 <stop> 继承
+   `currentColor`，由 `.dash-grad-*` 决定那是哪个 token。这样补丁样式表里
+   一个 gradient 函数都没有，check-built-css 的守卫继续有效，而视觉上拿到
+   了参考图那种「线色 → 透明」的竖向渐隐。
+
+   渐变节点放在 <defs> 里，由 <path fill="url(#…)"> 引用；路径自身的
+   fill 属性优先于 CSS 的 fill 声明，所以这里不再给 .dash-area 写 fill。 */
+.dash-grad-a {
+  color: var(--primary);
 }
 
-.dash-area-up {
-  fill: var(--info);
-  stroke: none;
-  opacity: 0.14;
+.dash-grad-b {
+  color: var(--info);
 }
+
+.dash-grad-c {
+  color: var(--success);
+}
+
+.dash-grad-d {
+  color: var(--warning);
+}
+
+/* 三个 stop 的透明度是「面积能不能看见」的唯一开关。
+
+   0.28 起步时实测几乎看不出来：暗色卡片底色是 oklch(0.205)，白色以 0.28
+   叠上去只到 oklch(0.42) 左右，而曲线上方的空白也就在这个亮度附近 —— 填
+   充和背景分不开。0.42 起手能明确看出「线下面有块颜色」，到 100% 归零，
+   面积因此有方向感而不是一块平涂。 */
+.dash-stop-top {
+  stop-color: currentColor;
+  stop-opacity: 0.42;
+}
+
+.dash-stop-mid {
+  stop-color: currentColor;
+  stop-opacity: 0.16;
+}
+
+.dash-stop-end {
+  stop-color: currentColor;
+  stop-opacity: 0;
+}
+
+/* 面积只作陪衬，不描边；不透明度交给渐变的 stop-opacity，两层相乘会把
+   上半段压得看不见。 */
+.dash-area,
+.dash-area-up {
+  stroke: none;
+}
+
+/* ── 坐标轴 ─────────────────────────────────────────────────────────── */
+
+/* 参考设计的波形是有框的图：左侧留白放刻度，底部一条基线，内部虚线网格。
+   网格比数据弱一档（虚线 + border 色），否则多条序列同图时会互相抢。 */
+.dash-axis-grid {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
+}
+
+/* 基线比内部网格实、比数据弱：它是「0」的位置，读柱和读面积都靠它。 */
+.dash-axis-base {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* 纵轴竖线：参考图里没有这条线，但暗色卡片上光有刻度数字会飘，留一条
+   极淡的竖线把刻度串起来。 */
+.dash-axis-y {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.55;
+}
+
+/* 刻度数字。字号由 CSS 给出（HTML 文本，不随 viewBox 拉伸），颜色与字距
+   在这里统一。tabular-nums 让 0 / 119M / 238M 右对齐时不抖。 */
+.dash-axis-label {
+  position: absolute;
+  right: 6px;
+  transform: translateY(-50%);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 有坐标轴的图包一层：左边留出刻度栏，右边 SVG 铺满，底下一条时间轴。
+
+   刻度用 HTML 而不是 SVG <text>：图表的 viewBox 用 preserveAspectRatio="none"
+   横向拉伸填满卡片，横向缩放常是纵向的两倍，SVG 文本会跟着变宽变扁（实测
+   「238M」被压成宽体字）。HTML 文本按真实字号排版，任何卡片宽度都清晰。 */
+.shadcn-dash-plot {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding-left: 2.6em;
+}
+
+/* 图 + 刻度栏共用同一块区域：刻度按百分比定位，必须和 SVG 同高。 */
+.shadcn-dash-plot-inner {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.shadcn-dash-plot-inner > .shadcn-dash-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 刻度栏：挂在绘图区左外侧（负 margin 把 2.6em 让回 padding），高度与
+   SVG 完全一致，标签按百分比落到各自的网格线上。 */
+.shadcn-dash-plot-labels {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2.6em;
+  margin-left: -2.6em;
+}
+
+/* 时间轴：首尾各一个刻度，与绘图区的左右边缘对齐（右边留给 padRight）。 */
+.shadcn-dash-plot-times {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  padding-top: 2px;
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.shadcn-dash-plot-times .dash-axis-label {
+  position: static;
+  transform: none;
+}
+
+/* 参考线：三条以内的水平细线，用来读「大概在几成」，不构成网格。 */
+.dash-grid {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* 端点光点：标出「现在」，也就是序列的末端。
+
+   它是「零长度线段 + 圆头」而不是 <circle>：图表的 viewBox 用
+   preserveAspectRatio="none" 拉伸，圆会被压成椭圆（实测在端口卡右边缘
+   画出一个 28×12 的扁块）。圆头配 non-scaling-stroke 在任何卡片宽度下
+   都是正圆。 */
+.dash-dot {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.dash-dot-halo {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 11;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.16;
+}
+
+/* 端点必须跟它终结的那条线同色，否则图上会出现「白线 + 蓝点」这种断链。 */
+.dash-dot-a {
+  stroke: var(--primary);
+}
+
+.dash-dot-b {
+  stroke: var(--info);
+}
+
+.dash-dot-c {
+  stroke: var(--success);
+}
+
+.dash-dot-d {
+  stroke: var(--warning);
+}
+
+/* 旧类名（见上方 .dash-line-up 的说明）。 */
+.dash-dot-up {
+  stroke: var(--info);
+}
+
+/* 首帧入场：线条从无到有（stroke-dashoffset 走一遍），只在图表第一次
+   出现时挂上 dash-enter 类，之后的补帧不再重放。 */
+.dash-enter .dash-line,
+.dash-enter .dash-line-up {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: dash-draw 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes dash-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ── 柱 ─────────────────────────────────────────────────────────────── */
 
 .dash-bar {
   fill: var(--primary);
   stroke: none;
-  opacity: 0.85;
+  opacity: 0.9;
+}
+
+/* 峰值柱：同色，但拉满不透明度。用透明度而不是换色，配色仍由 token 决定。 */
+.dash-bar-peak {
+  opacity: 1;
+}
+
+/* 柱状图的背景轨道：每一格都有一条极淡的完整高度轨道，读者比的是「柱子
+   填到轨道哪里」，而不是「几根柱子谁高」—— 后者在没有数据的格子上会失真。
+   透明度压到 0.18：24 格铺满时 0.3 会让整片区域看起来是竖条纹。 */
+.dash-bar-track,
+.dash-hour-rail {
+  fill: var(--muted);
+  fill-opacity: 0.18;
+  stroke: none;
 }
 
 .dash-bar-empty {
   fill: var(--muted-foreground);
   stroke: none;
-  opacity: 0.25;
+  opacity: 0.22;
 }
 
-/* 等距柱的三个面：同色、三个明度阶。不用渐变（adr/0003），也不靠阴影
-   伪造深度（adr/0007）。 */
-.dash-iso-front {
-  fill: var(--primary);
-  stroke: none;
-  opacity: 0.55;
+/* ── 环形 ───────────────────────────────────────────────────────────── */
+
+.dash-ring-track {
+  fill: none;
+  stroke: var(--muted);
+  stroke-linecap: round;
 }
 
-.dash-iso-side {
-  fill: var(--primary);
-  stroke: none;
-  opacity: 0.38;
+.dash-ring-seg {
+  fill: none;
+  stroke: var(--primary);
 }
 
-.dash-iso-top {
-  fill: var(--primary);
-  stroke: none;
-  opacity: 0.78;
+.dash-ring-used {
+  fill: none;
+  stroke: var(--primary);
+  stroke-linecap: round;
 }
+
+/* 内存环形图现在只画「已用」一条弧，剩余部分由 `.dash-ring-track` 承担 ——
+   原来那个「空闲扇区」的类已随重绘删除，别再往回加。 */
+
+/* 中心读数：数值用前景色、标签用次要色，字号由 SVG 的 font-size 给出
+   （随 viewBox 缩放），这里只管颜色与字重。 */
+.dash-ring-value {
+  fill: var(--foreground);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.dash-ring-label {
+  fill: var(--muted-foreground);
+  font-weight: 500;
+}
+
+.dash-ring-s0 {
+  stroke: var(--primary);
+}
+.dash-ring-s1 {
+  stroke: var(--info);
+}
+.dash-ring-s2 {
+  stroke: var(--success);
+}
+.dash-ring-s3 {
+  stroke: var(--warning);
+}
+.dash-ring-s4 {
+  stroke: var(--destructive);
+}
+
+/* ── 仪表 ───────────────────────────────────────────────────────────── */
 
 .dash-gauge-track {
   fill: none;
   stroke: var(--muted);
-  stroke-width: 8;
   stroke-linecap: round;
 }
 
 .dash-gauge-value {
   fill: none;
   stroke: var(--warning);
-  stroke-width: 8;
   stroke-linecap: round;
 }
 
-.dash-ring-seg {
-  fill: var(--primary);
-  stroke: none;
-  opacity: 0.8;
-}
-
-.dash-ring-used {
-  fill: var(--primary);
-  stroke: none;
-  opacity: 0.85;
-}
-
-.dash-ring-free {
-  fill: var(--muted);
-  stroke: none;
-}
-
-.dash-ring-s0 {
-  fill: var(--primary);
-  opacity: 0.85;
-}
-.dash-ring-s1 {
-  fill: var(--info);
-  opacity: 0.85;
-}
-.dash-ring-s2 {
-  fill: var(--success);
-  opacity: 0.85;
-}
-.dash-ring-s3 {
-  fill: var(--warning);
-  opacity: 0.85;
-}
-.dash-ring-s4 {
-  fill: var(--destructive);
-  opacity: 0.85;
-}
+/* ── 排行 ───────────────────────────────────────────────────────────── */
 
 .dash-rank-track {
-  fill: var(--muted);
-  stroke: none;
+  stroke: var(--muted);
+  fill: none;
 }
 
 .dash-rank-bar {
-  fill: var(--primary);
-  stroke: none;
-  opacity: 0.75;
+  stroke: var(--primary);
+  fill: none;
 }
 
+/* ── 热力格 ─────────────────────────────────────────────────────────── */
+
 .dash-heat-cell {
-  fill: var(--muted);
+  fill: var(--primary);
   stroke: none;
 }
 
 .dash-s0 {
-  opacity: 0.25;
+  opacity: 0.18;
 }
 .dash-s1 {
-  opacity: 0.4;
+  opacity: 0.34;
 }
 .dash-s2 {
-  opacity: 0.55;
+  opacity: 0.52;
 }
 .dash-s3 {
-  opacity: 0.7;
+  opacity: 0.72;
 }
 .dash-s4 {
-  opacity: 0.9;
+  opacity: 0.95;
+}
+
+/* ── 卡片与磁贴的入场 ───────────────────────────────────────────────── */
+
+/* 卡片出现时轻微上浮 + 淡入。一次性：dashBoard 只在建板时挂一次，轮询只
+   重写 card-body 的内容，不会重放这条动画。 */
+.shadcn-dash-card,
+.shadcn-dash-tile {
+  animation: dash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 概况带五块磁贴依次入场，制造一个很轻的阅读引导（0.04s 一步，总时长仍
+   在 0.6s 内结束）。 */
+.shadcn-dash-tile:nth-child(1) {
+  animation-delay: 0ms;
+}
+.shadcn-dash-tile:nth-child(2) {
+  animation-delay: 40ms;
+}
+.shadcn-dash-tile:nth-child(3) {
+  animation-delay: 80ms;
+}
+.shadcn-dash-tile:nth-child(4) {
+  animation-delay: 120ms;
+}
+.shadcn-dash-tile:nth-child(5) {
+  animation-delay: 160ms;
+}
+
+@keyframes dash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 降低动效时全部退化为静止终值：入场不淡入、线条不描边、补间由
+   _charts.js 的 reduceMotion() 直接跳过。 */
+@media (prefers-reduced-motion: reduce) {
+  .shadcn-dash-card,
+  .shadcn-dash-tile,
+  .dash-enter .dash-line,
+  .dash-enter .dash-line-up {
+    animation: none;
+  }
+
+  .dash-enter .dash-line,
+  .dash-enter .dash-line-up {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
 }
 
 /* ── 线路 ───────────────────────────────────────────────────────────── */
@@ -1468,16 +1790,38 @@ html.shadcn-drawer-lock body {
 
 /* ── 环形与图例 ─────────────────────────────────────────────────────── */
 
+/* 环形图固定尺寸，余量交给图例；容器自身不参与拉伸，避免环形被拉成椭圆。
+   宽度与 _charts.js 里 ring 的 size 对齐（内存 76 / 协议 104），否则 SVG 会
+   按容器宽度等比缩放，字号跟着变。 */
 .shadcn-dash-ring-wrap {
-  width: 96px;
-  max-width: 50%;
+  flex-shrink: 0;
+  width: 76px;
+  max-width: 60%;
+  margin: 2px auto 0;
 }
 
+/* 协议分布的环形更大（5 个扇区 + 中心合计），单独放宽。 */
+[data-card="protos"] .shadcn-dash-ring-wrap {
+  width: 104px;
+  max-width: 80%;
+  margin-top: 0;
+}
+
+/* 图例：色点 + 名称 + 当前读数。读数是图例里唯一的前景色，让「哪条线
+   现在是多少」不用回到磁贴去对。 */
 .shadcn-dash-legend {
   display: flex;
-  gap: 12px;
+  align-items: baseline;
+  gap: 16px;
   font-size: 0.6875rem;
   color: var(--muted-foreground);
+}
+
+.shadcn-dash-legend-down,
+.shadcn-dash-legend-up {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .shadcn-dash-legend-down::before,
@@ -1485,9 +1829,9 @@ html.shadcn-drawer-lock body {
   display: inline-block;
   width: 8px;
   height: 8px;
-  margin-right: 4px;
   content: "";
-  border-radius: 2px;
+  border-radius: 999px;
+  align-self: center;
 }
 
 .shadcn-dash-legend-down::before {
@@ -1498,12 +1842,19 @@ html.shadcn-drawer-lock body {
   background: var(--info);
 }
 
+.shadcn-dash-legend-value {
+  font-weight: 600;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── 端口列表 ───────────────────────────────────────────────────────── */
 
 .shadcn-dash-portlist {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  padding-top: 2px;
 }
 
 .shadcn-dash-portrow {
@@ -1517,6 +1868,7 @@ html.shadcn-drawer-lock body {
 
 .shadcn-dash-portname {
   overflow: hidden;
+  font-family: var(--font-mono);
   color: var(--foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1524,14 +1876,34 @@ html.shadcn-drawer-lock body {
 
 /* ── 小时轴 ─────────────────────────────────────────────────────────── */
 
+/* 刻度与柱子一一对齐：24 格等宽，用 grid 而不是 space-between，否则
+   「00 / 06 / 12 / 18」之间的间距会与柱子错位。没有采样的小时压暗，
+   与柱体的空槽一致。 */
 .shadcn-dash-axis {
-  display: flex;
-  justify-content: space-between;
-  gap: 2px;
-  margin-top: 2px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0;
+  margin-top: 4px;
   font-size: 0.5625rem;
+  line-height: 1;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* 每 3 小时才显示一个刻度，其余留空但占位 —— 24 个两位数在窄卡里会叠成
+   一片糊。 */
+.shadcn-dash-axis > span {
+  opacity: 0;
+}
+
+.shadcn-dash-axis > span:nth-child(3n + 1) {
+  opacity: 1;
+}
+
+.shadcn-dash-axis > span.is-empty {
+  color: var(--muted-foreground-a70);
 }
 
 /* ── 排行 ───────────────────────────────────────────────────────────── */
@@ -1539,13 +1911,18 @@ html.shadcn-drawer-lock body {
 .shadcn-dash-rankrow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 8px;
+  gap: 4px 8px;
   align-items: center;
 }
 
 .shadcn-dash-rankhost {
   overflow: hidden;
   padding: 0;
+  /* The theme's global `button` rule centres its content with
+     `display: inline-flex; justify-content: center`, which floated the host
+     address into the middle of its grid cell. `text-align: left` alone cannot
+     undo that — the flex line has to start at the left edge. */
+  justify-content: flex-start;
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   text-align: left;
@@ -1589,20 +1966,67 @@ html.shadcn-drawer-lock body {
 .shadcn-dash-protolegend {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
+/* 三列：名称 / 占比 / 流量。占比单列，让读者能直接比大小，而不用把两个
+   字节数换算成百分比。 */
 .shadcn-dash-protorow {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: baseline;
   font-size: 0.6875rem;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
 
+/* 名称前的色点与扇区同色（dash-ring-s0…s4 一一对应）。没有色点，读者
+   只能靠顺序去猜哪一块扇区对应哪一行。 */
 .shadcn-dash-protoname {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
   color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadcn-dash-protoname::before {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  content: "";
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.shadcn-dash-protoname[data-tone="s1"]::before {
+  background: var(--info);
+}
+
+.shadcn-dash-protoname[data-tone="s2"]::before {
+  background: var(--success);
+}
+
+.shadcn-dash-protoname[data-tone="s3"]::before {
+  background: var(--warning);
+}
+
+.shadcn-dash-protoname[data-tone="s4"]::before {
+  background: var(--destructive);
+}
+
+.shadcn-dash-protoshare {
+  min-width: 3.2em;
+  text-align: right;
+  color: var(--foreground);
+}
+
+.shadcn-dash-protobytes {
+  min-width: 4.5em;
+  text-align: right;
 }
 
 /* ── 响应式 ─────────────────────────────────────────────────────────── */
@@ -1640,14 +2064,34 @@ html.shadcn-drawer-lock body {
     display: block;
   }
 
+  /* 手机上的端口图给 76px：44px 是无坐标轴火花线的高度，现在图里要放
+     三条刻度 + 一条时间轴，44px 只剩 32px 画曲线，波形被压成一条带子。 */
   #shadcn-dash-flow
     [data-card="ports"]
     .shadcn-dash-card-body
-    > .shadcn-dash-chart,
+    > .shadcn-dash-plot {
+    flex: initial;
+    height: 76px;
+    max-height: 76px;
+  }
+
   [data-card="hours"] .shadcn-dash-card-body > .shadcn-dash-chart {
     flex: initial;
-    height: 34px;
+    height: 44px;
     max-height: 96px;
+  }
+
+  /* 24 个刻度的轴在 390px 屏上每个只有 15px：每 6 小时标一个，其余留空。 */
+  .shadcn-dash-axis {
+    font-size: 0.5rem;
+  }
+
+  .shadcn-dash-axis > span:nth-child(3n + 1) {
+    opacity: 0;
+  }
+
+  .shadcn-dash-axis > span:nth-child(6n + 1) {
+    opacity: 1;
   }
 
   [data-card="protos"] .shadcn-dash-card-body,

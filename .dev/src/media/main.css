@@ -22,7 +22,11 @@
 @source not "../../vite.config.ts";
 @source not "../../scripts/*.client.js";
 @source not "../../tests/*.js";
-@source not "../../docs/*.md";
+/* `docs/*.md` only matched the top level. The ADRs live one directory down,
+   and a code span in one of them (`transform: scaleY()`) emitted a stray
+   `.transform` utility plus the whole `--tw-rotate-*` property block into this
+   file. Every Markdown file under docs/ is prose, so exclude the tree. */
+@source not "../../docs/**/*.md";
 
 /* Page patches build their own stylesheet entries and are plain CSS by design
    (see .dev/docs/patches.md). Their sources still live under src/, so Tailwind's
