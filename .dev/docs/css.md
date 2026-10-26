@@ -60,9 +60,19 @@ Body copy is set separately at 14px, so text keeps this theme's density while th
 
 ## Dark mode
 
-There is no mode. `header.ut` sets `data-darkmode="true"` unconditionally before paint and `sidebar-shadcn.js` deletes the legacy `shadcn.theme` localStorage key instead of reading it, so a browser that once selected light lands on dark with no flash (adr/0002). `color-scheme` is `dark` and `theme-color` is the single `--background` value.
+There is no mode, and no light path to verify: one `:root` token set, no `prefers-color-scheme`, no `light-dark()`, no `dark:` variant. `header.ut` sets `data-darkmode="true"` unconditionally before paint and `sidebar-shadcn.js` deletes the legacy `shadcn.theme` localStorage key instead of reading it, so a browser that once selected light lands on dark with no flash (adr/0002). `color-scheme` is `dark` and `theme-color` is the single `--background` value.
+
+**`data-darkmode` is a cross-package contract, not this theme's own switch — do not delete it.** Three packages on the router key their dark token blocks off it:
+
+| package                     | selector                                          |
+| --------------------------- | ------------------------------------------------- |
+| `luci-app-dnschain`         | `html[data-darkmode="true"]` → `--dc-ok` etc.     |
+| `luci-app-trafficctl`       | `:root[data-darkmode="true"]` → `--tc-speed` etc. |
+| `bootstrap` (`cascade.css`) | `:root[data-darkmode="true"]` → the colour ladder |
+
+Measured on the device: removing the attribute from the DNS page flips `--dc-ok` from `#4ade80` (dark) to `#16a34a` (light) and `--dc-border` from `0.28` to `0.35` alpha. The theme owns the attribute's only writer, so deleting that write would silently light-theme three unrelated pages.
 
 ## Icons, two sources
 
 - `.dev/src/assets/icons/` (Lucide SVGs) are referenced from CSS via the `@assets` alias as `mask-image`/`mask`, so they inherit `currentColor`.
-- `.dev/public/shadcn/icons/` are SVGs referenced directly via `<img>`/JS (sidebar, menu, login, theme toggle) and copied verbatim to `htdocs/luci-static/shadcn/icons/`.
+- `.dev/public/shadcn/icons/` are SVGs referenced directly via `<img>`/JS (sidebar, menu, login) and copied verbatim to `htdocs/luci-static/shadcn/icons/`. The set carries no theme-switch icons: `sun` / `moon` / `monitor` went with the removed light/dark/device switch.

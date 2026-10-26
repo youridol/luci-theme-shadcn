@@ -604,9 +604,7 @@ return baseclass.extend({
   /**
    * Command palette (⌘K), replaces the C1 topbar route search. One panel
    * serves navigation (the same two-level model the sidebar renders) and
-   * the ">" command scope — theme modes plus logout; the modes are the
-   * only UI able to return to 'device' once the header toggle has written
-   * an explicit mode.
+   * the ">" command scope — logout is its only command.
    * DOM is built lazily on first open; page load binds one trigger click
    * and one keydown listener.
    * Translation caveat: the dispatcher load_catalog()s the whole
@@ -615,8 +613,7 @@ return baseclass.extend({
    * catalog, so every string here is an existing msgid: luci-base ones
    * are guaranteed, and 'Type to filter…' comes from
    * luci-app-package-manager, a dependency of the default luci
-   * collection. Light/Dark are the sole holdouts — no LuCI pot defines
-   * them, so they stay English until someone gives the theme a po.
+   * collection.
    */
   initPalette(branch, branchUrl) {
     const trigger = document.getElementById("cmdk-trigger");

@@ -1,9 +1,15 @@
 "use strict";
 "require baseclass";
 
-// Legacy key. The theme shipped a light/dark/device switch until
-// .dev/docs/adr/0002-dark-only.md; a stored value is deleted on start so a
-// stale preference cannot outlive the switch it belonged to.
+// The theme ships one scheme (.dev/docs/adr/0002-dark-only.md). `data-darkmode`
+// is written once, pre-paint, by header.ut — that is the only writer. It is not
+// deleted here or anywhere else: three third-party packages on the router read
+// it (dnschain, trafficctl, bootstrap's cascade.css) to pick their own dark
+// token set, so removing the attribute would flip them back to light.
+//
+// This key is the leftover of the light/dark/device switch that used to exist.
+// Nothing reads it any more; deleting it on start stops a stale preference from
+// outliving the switch it belonged to.
 const THEME_KEY = "shadcn.theme";
 
 /* 「固定展开」标记。旧键 shadcn.sidebar 存的是「是否收起」，语义正好相反；
@@ -39,13 +45,12 @@ return baseclass.extend({
 
   /* ── Theme ── */
 
-  // One scheme only. header.ut sets data-darkmode before paint; this drops the
-  // key the removed three-way switch used to write.
+  // One scheme only. header.ut sets data-darkmode before paint and is the only
+  // writer; this drops the key the removed three-way switch used to write.
   initTheme() {
     try {
       localStorage.removeItem(THEME_KEY);
     } catch (e) {}
-    document.documentElement.setAttribute("data-darkmode", "true");
   },
 
   /* ── Sidebar collapse (desktop icon rail) ── */

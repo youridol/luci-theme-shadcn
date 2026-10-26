@@ -82,6 +82,12 @@
 		<title>{{ striptags(((boardinfo && boardinfo.hostname) ? boardinfo.hostname : '?') + ((dispatched && dispatched.title) ? (' | ' + _(dispatched.title)) : '')) }}</title>
 		<script>
 			(function () {
+				/* The theme has one scheme (.dev/docs/adr/0002-dark-only.md), so
+				   this is not a preference — it is a contract other packages read.
+				   dnschain, trafficctl and bootstrap's cascade.css all key their own
+				   dark token blocks off `[data-darkmode="true"]`; without it they
+				   fall back to their light values. Set before paint so they never
+				   render light for a frame. This is the attribute's only writer. */
 				document.documentElement.setAttribute('data-darkmode', 'true');
 				/* Sidebar rests collapsed; only an explicitly pinned sidebar is
 				   drawn expanded. Must match SIDEBAR_PINNED_KEY in
@@ -94,7 +100,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 		<meta name="color-scheme" content="dark">
 		{% if (blank_page): %}
-		<link rel="stylesheet" href="{{ media }}/login.css">
+		<link rel="stylesheet" href="{{ media }}/login.css?v={{ asset_version }}">
 		{% else %}
 		<link rel="stylesheet" href="{{ media }}/main.css?v={{ asset_version }}" data-luci-shell>
 		{% for (let patch in patch_files): %}
