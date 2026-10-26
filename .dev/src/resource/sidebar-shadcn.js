@@ -106,30 +106,28 @@ return baseclass.extend({
 
   /* 悬浮展开 / 收回。
 
-     两个属性分工：
+     只有一个属性分工：
 
        #sidebar[data-collapsed]        「内容是否铺开」—— 决定标签、箭头、子
                                        列表显不显示，也是 _initAccordion 与
-                                       折叠面板判定的依据；
-       html[data-sidebar-floating]     「铺开时是否脱离文档流」—— 只有悬浮
-                                       展开才置位。
+                                       折叠面板判定的依据。
 
-     为什么分开：悬浮展开若只把 data-collapsed 置 false，侧边栏就按正常文档
-     流占 16rem，主内容跟着缩，指针每次扫过侧边栏整页重排一次。加上 floating
-     之后它绝对定位盖在内容上，布局完全不动。
+     侧边栏在桌面上是**固定定位**（见 _layout.css），不参与文档流；内容靠
+     #main-wrapper 的 padding-left 让开它的宽度，而这个 padding 读的是
+     --sidebar-inset，由 data-sidebar-collapsed 驱动。所以悬浮展开和点按钮
+     固定展开走的是同一条避让路径：内容让开 16rem，而不是被盖住。
 
-     floating 必须挂在 <html> 上而不是 #sidebar：CSS 那条规则写成
-     `html[data-sidebar-floating="true"] #sidebar`，挂在元素上就匹配不到 ——
-     实测属性写对了但 position 仍是 static，主内容照样被挤动。
+     原来还有一个 html[data-sidebar-floating] 用来把悬浮态切成 absolute，
+     免得指针扫过侧边栏时内容跟着缩。侧边栏既然永远脱离文档流，这个属性就
+     没有存在意义了，已删除。
 
-     **退场要判断指针去了哪，不能一离开就收。** 子菜单抽屉挂在 body 上、贴着
-     侧边栏右缘（left = 侧边栏 right），两者不重叠，所以「从侧边栏内的菜单项
-     水平右移到抽屉」必然先经过一个 pointerleave。原来收到 pointerleave 就立刻
-     收起，结果是抽屉还开着、侧边栏却缩回图标轨（用户截图里的样子），随后抽屉
-     失去依托也关掉 —— 二级菜单根本点不到。
+     **退场要判断指针去了哪，不能一离开就收。** 子菜单抽屉固定在侧边栏右缘，
+     两者不重叠，所以「从侧边栏内的菜单项水平右移到抽屉」必然先经过一个
+     pointerleave。原来收到 pointerleave 就立刻收起，结果是抽屉还开着、侧边栏
+     却缩回图标轨，随后抽屉失去依托也关掉 —— 二级菜单根本点不到。
 
      现在的做法：pointerleave 不直接收，而是起一个短宽限计时；指针在宽限内进入
-     抽屉就把计时取消。抽屉是 pointerenter 的直接目标，所以这个判断很可靠。
+     抽屉就把计时取消。
 
      只对鼠标生效：触屏没有 hover，pointerenter 会跟着 tap 一起触发，那时
      应该什么都不做（手机上走抽屉）。 */
@@ -152,7 +150,7 @@ return baseclass.extend({
       if (this._pinned) return;
       this._cancelLeave();
       this._hovering = true;
-      this._applyCollapsed(false, { animate: false, floating: true });
+      this._applyCollapsed(false, { animate: false });
     });
 
     sidebar.addEventListener("pointerleave", () => {
@@ -253,7 +251,11 @@ return baseclass.extend({
 
   /* 写折叠状态。`animate` 为 false 时摘掉 data-sidebar-anim，让这次切换不走
      宽度过渡；悬浮展开必须这样，指针划过去时 200ms 的宽度动画既拖沓又让
-     浮层跟不上指针。 */
+     浮层跟不上指针。
+
+     data-sidebar-collapsed 同时驱动两件事：侧边栏自己的宽度，以及
+     #main-wrapper 的 padding-left（--sidebar-inset）。所以写一次属性，避让
+     和宽度一起变，不会出现「内容让开了但侧边栏还没宽」的中间帧。 */
   _applyCollapsed(collapsed, opts) {
     const sidebar = document.getElementById("sidebar");
     if (!sidebar) return;
@@ -269,11 +271,6 @@ return baseclass.extend({
       collapsed ? "true" : "false",
     );
 
-    // 挂在 <html> 上，与 CSS 选择器一致（见 _initHoverExpand 的说明）。
-    if (o.floating)
-      document.documentElement.setAttribute("data-sidebar-floating", "true");
-    else document.documentElement.removeAttribute("data-sidebar-floating");
-
     if (collapsed) {
       document
         .querySelectorAll(".sidebar-accordion-item[data-open='true']")
@@ -282,8 +279,9 @@ return baseclass.extend({
         });
 
       /* 侧边栏收成图标轨后，贴在它右缘的子菜单抽屉就没有依托了 —— 它会留在
-         原地、指向一列已经没有文字的图标，正是用户截图里的样子。收起时一并
-         关掉，两层浮面要么都开、要么都关。 */
+         原地、指向一列已经没有文字的图标。收起时一并关掉，两层浮面要么都开、
+         要么都关。closeSubDrawer 会同时清掉 html[data-sidebar-sub]，所以
+         二级避让也跟着退掉。 */
       window.ShadcnMenu?.closeSubDrawer?.();
     }
   },
@@ -304,19 +302,30 @@ return baseclass.extend({
     this._hideCollapsedPopover();
   },
 
-  /* 点过二级菜单项之后，把整层浮面收回。
+  /* 点过二级菜单项之后，把整层浮面收回 —— 两级都收，并复位。
 
-     与 toggleCollapse 的区别：这里**不清 pinned**。用户可能先前点了按钮把
-     侧边栏钉住；选完一个二级项不该顺手把他的偏好改掉。所以只在「不是固定
-     展开」时收起 —— 那才是浮面临时铺开的情形。
+     需求是「点完二级项收起所有侧边栏复位」，所以这里**连 pinned 一起清**：
+     用户选完了一个目的地，画面上不该再摊着两层菜单，下次回到页面时也该是
+     默认的收起态。这与 toggleCollapse 的「记住我的偏好」是两种语义，各自
+     独立。
 
-     也不播动画：收起发生在点击之后、页面导航的同一帧里，200ms 的宽度过渡会
-     和即将到来的内容替换叠在一起，看起来像卡了一下。 */
+     顺序要紧：先收二级面板（它自己会清 html[data-sidebar-sub]，二级避让随之
+     退掉），再收一级侧边栏（--sidebar-inset 回落到 --sidebar-w-rail）。两步
+     都摘掉 data-sidebar-anim，因为收起发生在点击之后、页面导航的同一帧里，
+     200ms 的过渡会和即将到来的内容替换叠在一起，看起来像卡了一下。 */
   collapseAfterNavigate() {
     this._cancelLeave();
     this._hovering = false;
-    if (this._pinned) return;
+
+    window.ShadcnMenu?.closeSubDrawer?.();
+
+    if (this._pinned) {
+      this._pinned = false;
+      localStorage.setItem(SIDEBAR_PINNED_KEY, "false");
+    }
+
     this._applyCollapsed(true, { animate: false });
+    this._hideCollapsedPopover();
   },
 
   /* ── Collapsed hover popover ── */

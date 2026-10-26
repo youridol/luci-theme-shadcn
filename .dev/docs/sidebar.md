@@ -1,37 +1,46 @@
 # Sidebar & menu
 
 - `header.ut`: near-minimal shell — empty `#sidebar` plus a parser-blocking inline script right after it that replays the sidebar cache (below) before first paint; sidebar chrome + nav are otherwise built client-side in `menu-shadcn.js`.
-- `sidebar-shadcn.js`: state machine for theme (light/dark/device), sidebar collapse/expand, accordion, and mobile drawer — exposed as `window.ShadcnSidebar` after the `shadcn-sidebar-ready` event fires.
+- `sidebar-shadcn.js`: state machine for the single-scheme theme cleanup, sidebar collapse/expand, accordion, and mobile drawer — exposed as `window.ShadcnSidebar` after the `shadcn-sidebar-ready` event fires.
 - `menu-shadcn.js`: resolves the `admin` branch of `ui.menu.load()`, then renders a two-level sidebar; `ICON_MAP` maps a LuCI menu node's `name` to `/shadcn/icons/*.svg`; deeper levels render as `#tabmenu`. `syncRoute()` re-marks the active sidebar item (same longest-link-prefix rule as the header.ut replay), breadcrumb and tabs from `L.env` after a [router](router.md) swap without rebuilding the sidebar; `closeSurfaces()` closes palette/drawer/popover.
 
-## 桌面侧边栏：默认收起，悬浮展开，点击钉住
+## 桌面侧边栏：两级避让，内容用满剩余宽度
 
-三种状态，由两个属性分工表达：
+侧边栏在桌面上**永远固定定位**（`position: fixed`），不参与文档流。它不靠挤压
+兄弟元素来「占位」，而是让内容用 `padding-left` 主动让开。因此内容能占满除侧边栏
+以外的每一个像素，没有任何 `max-width` 上限。
 
-| 状态         | `#sidebar[data-collapsed]` | `html[data-sidebar-floating]` | 宽度  | 占位                         |
-| ------------ | -------------------------- | ----------------------------- | ----- | ---------------------------- |
-| 收起（默认） | `true`                     | 无                            | 48px  | 是（3rem 图标轨）            |
-| 悬浮展开     | `false`                    | `true`                        | 256px | **否**（绝对定位盖在内容上） |
-| 固定展开     | `false`                    | 无                            | 256px | 是                           |
+避让分两级，全部由 `<html>` 上的属性和一组变量驱动：
 
-**为什么悬浮展开必须脱离文档流。** `body` 是 flex 行，侧边栏是它的 flex 项，
-`#main-wrapper` 是 `flex-1`。悬浮展开若走正常流，侧边栏一宽主内容就跟着缩，
-指针每次扫过侧边栏整页重排一次 —— 比一直展开更烦人。加上 floating 之后它
-`position: absolute` 盖上去，`#main-wrapper` 自己补满整行，布局完全不动。
-实测：悬浮时 `#main-wrapper` 的 `left` 保持 0、宽度保持 1400；固定展开时
-才变成 `left: 256` / 宽 1144。
+| 状态         | `data-sidebar-collapsed` | `data-sidebar-sub` | `--sidebar-inset`     | 侧边栏 | 面板      | 内容起点 |
+| ------------ | ------------------------ | ------------------ | --------------------- | ------ | --------- | -------- |
+| 收起（默认） | `true`                   | 无                 | `3rem`                | 48px   | —         | 48px     |
+| 一级展开     | `false`                  | 无                 | `16rem`               | 256px  | —         | 256px    |
+| 二级展开     | `false`                  | `true`             | `calc(16rem + 12rem)` | 256px  | 256→448px | 448px    |
 
-**为什么 `floating` 挂在 `<html>` 而不是 `#sidebar`。** CSS 规则写作
-`html[data-sidebar-floating="true"] #sidebar`。第一版把属性写在 `#sidebar` 上，
-属性值对了但选择器匹配不到，`position` 仍是 `static`，主内容照样被挤动。
+变量链（`_layout.css` 顶部）：`--sidebar-w-rail` / `--sidebar-w-full` /
+`--sidebar-w-sub` 是三个字面宽度，`--sidebar-primary-w` 按状态取前两者之一，
+`--sidebar-inset` 由它推导。`#sidebar` 用 `--sidebar-primary-w` 定宽，
+`.sidebar-subdrawer` 用 `--sidebar-w-sub` 定宽且 `left: var(--sidebar-primary-w)`，
+`#main-wrapper` 用 `--sidebar-inset` 做 `padding-left`。一个变量对一个消费者，
+避让量永远等于实际让开的宽度。
 
-**悬浮只用 JS 置位，不写 `:hover`。** `data-collapsed` 还要给折叠面板与手风琴
-读；如果 CSS 用 `:hover` 判断、JS 用属性判断，两套判据会各说各话（CSS 认为在
-悬浮、JS 认为已收起）。所以统一由 `_applyCollapsed()` 写两个属性，CSS 只认属性。
+**为什么改成固定定位。** 原先是 flex 行 + 悬浮态 `absolute` 盖在内容上，需要
+`html[data-sidebar-floating]` 这个额外属性区分「占位」与「盖住」。既然现在要求
+内容用满全部剩余空间、且展开时必须避让，两种触发（悬浮 / 点按钮固定）的避让
+行为本来就该一样 —— 于是 floating 这个状态整个删掉，只剩 `data-sidebar-collapsed`
+一个判据。
 
-**悬浮展开不播宽度过渡。** `_applyCollapsed(…, {animate:false})` 会摘掉
-`data-sidebar-anim`；200ms 的宽度动画在指针划过去时既拖沓，又让浮层跟不上指针。
-点按钮的固定展开才播。
+**为什么 `left` 由 CSS 算而不是 JS 量。** 面板原先写
+`panel.style.left = sidebar.getBoundingClientRect().right`。侧边栏宽度有 200ms
+过渡，若面板在过渡途中打开，量到的是中途值，面板被钉在图标轨右缘、随后被展开的
+侧边栏盖住（实测面板 `left: 48` 而侧边栏已 256px）。改用变量后，面板逐帧跟随
+侧边栏，不需要重新测量，也不需要监听器。
+
+**为什么 inset 不能自引用。** 曾写成
+`--sidebar-inset: calc(var(--sidebar-inset) + var(--sidebar-w-sub))` —— 自定义属性
+引用自身构成循环，解析为 guaranteed-invalid，`padding-left` 会静默失效。必须通过
+独立的 `--sidebar-primary-w` 中转。
 
 **持久化只记「固定展开」**，键 `shadcn.sidebar.pinned`。悬浮是瞬时状态，写进
 存储会让刷新后的状态取决于上次指针停在哪里。旧键 `shadcn.sidebar` 存的是
@@ -41,7 +50,7 @@
 
 ### 退场：先看指针去了哪，再决定收不收
 
-子菜单抽屉挂在 `body` 上、贴着侧边栏右缘（`left = 侧边栏 right`）。两者不重叠，
+子菜单抽屉贴在侧边栏右缘（`left: var(--sidebar-primary-w)`）。两者不重叠，
 所以「从侧边栏内的菜单项水平右移到抽屉」**必然**先经过一次 `pointerleave`。
 
 第一版收到 `pointerleave` 就立刻收起，结果是抽屉还开着、侧边栏却缩回图标轨
@@ -62,10 +71,13 @@
 hover 状态没落地），于是误判成「没在面板上」直接收起。矩形判断不依赖事件时序。
 为此 `_initHoverExpand` 在 `document` 上挂了一个 `pointermove` 记录 `this._pointer`。
 
-**点二级项之后收整层浮面。** `menu-shadcn.js` 的链接点击调
-`ShadcnSidebar.collapseAfterNavigate()`：关抽屉 + 收起侧边栏。它**不动 pinned** ——
-用户先前点按钮钉住的偏好不该被一次导航改掉，所以只在「不是固定展开」时才收。
-收起时 `_applyCollapsed` 还会顺手 `closeSubDrawer()`，保证两层浮面要么都开、要么都关。
+**点二级项之后全部收起复位。** `menu-shadcn.js` 的链接点击调
+`ShadcnSidebar.collapseAfterNavigate()`：关二级面板 + 收一级侧边栏 + **清掉
+`pinned`**。这里与 `toggleCollapse` 的「记住偏好」是两种语义：用户选完了一个
+目的地，画面不该再摊着两层菜单，下次回来也该是默认收起态。顺序上先收面板
+（它自己清 `data-sidebar-sub`，二级避让随之退掉），再收侧边栏
+（`--sidebar-inset` 回落到 `--sidebar-w-rail`）。两步都不播动画，因为收起发生在
+点击之后、页面导航的同一帧里。
 
 ## Row rhythm and the three surface states
 

@@ -1,5 +1,53 @@
 /* ── Sidebar ──────────────────────────────────────────────────────── */
 
+/* Sidebar geometry: the numbers, one source of truth.
+
+   Three literal widths, one derived width, and one derived inset:
+
+     --sidebar-w-rail      3rem    collapsed icon rail
+     --sidebar-w-full      16rem   expanded primary sidebar
+     --sidebar-w-sub       12rem   level-2 sub-panel
+     --sidebar-primary-w   one of the first two, per state
+     --sidebar-inset       how far the content must clear
+
+   #sidebar sizes itself from --sidebar-primary-w, .sidebar-subdrawer from
+   --sidebar-w-sub, and #main-wrapper insets itself by --sidebar-inset. One
+   variable per consumer, and the inset is always derived from what the primary
+   actually is, so the content can never disagree with the rail it avoids.
+
+   Mobile keeps its own 18rem drawer width (SIDEBAR_WIDTH_MOBILE); the inset
+   only applies from the md breakpoint up. */
+html {
+  --sidebar-w-rail: 3rem;
+  --sidebar-w-full: 16rem;
+  --sidebar-w-sub: 12rem;
+  --sidebar-primary-w: var(--sidebar-w-rail);
+  --sidebar-inset: var(--sidebar-primary-w);
+}
+
+/* Level 1 avoidance: the primary sidebar is open. Set by sidebar-shadcn.js on
+   the same attribute the rail already reads. */
+html[data-sidebar-collapsed="false"] {
+  --sidebar-primary-w: var(--sidebar-w-full);
+}
+
+/* Level 2 avoidance: the sub-panel is open beside the primary sidebar, so the
+   content starts after both.
+
+   The primary term is --sidebar-primary-w, not --sidebar-w-full: the panel is
+   positioned at the primary sidebar's right edge (menu-shadcn.js reads
+   getBoundingClientRect().right), so whatever width the primary has at that
+   moment is what the panel sits after. Deriving from --sidebar-primary-w keeps
+   the two in step without restating the width.
+
+   (Note this must not be written as
+   `calc(var(--sidebar-inset) + var(--sidebar-w-sub))` — a custom property
+   referring to itself is a cycle and resolves to the guaranteed-invalid value,
+   which silently drops the padding.) */
+html[data-sidebar-sub="true"] {
+  --sidebar-inset: calc(var(--sidebar-primary-w) + var(--sidebar-w-sub));
+}
+
 #sidebar {
   /* Mobile drawer: translate only; `transition-all` would also ease
      background-color and lag the sidebar behind the content on theme flips. */
@@ -7,6 +55,13 @@
      SIDEBAR_WIDTH_MOBILE constants; 3rem is SIDEBAR_WIDTH_ICON below. */
   @apply bg-sidebar-bg flex h-full w-64 shrink-0 flex-col overflow-hidden;
   @apply max-md:fixed max-md:top-0 max-md:left-0 max-md:z-40 max-md:h-dvh max-md:w-72 max-md:-translate-x-full max-md:shadow-lg max-md:[transition:translate_.3s_var(--ease-out)];
+
+  /* Desktop: out of flow, always. The sidebar reserves space by insetting the
+     content (#main-wrapper's padding-left) instead of shrinking a flex row.
+     That is what lets the content use every remaining pixel with no max-width
+     cap — see #maincontent. Because it never overlaps the content, it needs no
+     elevation of its own. */
+  @apply md:fixed md:top-0 md:left-0 md:z-30 md:h-dvh;
 
   /* Official Sheet (side=left) enter: slide-in-from-left. @starting-style is
      the native "before first appearance" hook, so the drawer slides in only
@@ -25,21 +80,28 @@
   }
 }
 
-/* 桌面侧边栏三态：收起（默认）· 悬浮展开 · 固定展开。
+/* Desktop width comes from the shared variables rather than from a Tailwind
+   `md:w-*` class: a utility cannot reference a custom property, and the width
+   and --sidebar-inset must not drift apart. Mobile keeps the 18rem drawer from
+   the max-md:w-72 above. */
+@media (width >= 48rem) {
+  #sidebar {
+    width: var(--sidebar-primary-w);
+  }
+}
+
+/* 桌面侧边栏两态：收起（默认）· 展开。
 
    收起是默认：3rem 图标轨，把横向空间让给内容。这是「概览看板」这类页面的
    常态 —— 打开就是读数据，不是切菜单。
 
-   悬浮展开用绝对定位覆盖在内容之上，**不参与 flex 布局**。如果悬浮展开走
-   正常文档流，侧边栏一宽主内容就跟着缩，指针每次扫过侧边栏整页都会重排一次，
-   那比收起更烦人。固定展开（点过按钮）才占位，因为那时用户明确要它一直开着。
+   展开分两种触发（悬浮 / 点按钮固定），但**避让行为相同**：侧边栏固定定位，
+   内容用 padding-left 让开它的宽度，所以无论怎么展开，内容都不会被盖住，
+   也不需要重排整个 flex 行。
 
-   判据是 html 上的 data-sidebar-collapsed，与 sidebar-shadcn.js 写的一致：
-   收起与「悬浮展开」都算 collapsed=true（侧边栏不占位），区别只在宽度。 */
+   判据是 html 上的 data-sidebar-collapsed，与 sidebar-shadcn.js 写的一致。 */
 
 html[data-sidebar-collapsed="true"] #sidebar {
-  @apply md:w-12;
-
   .sidebar-brand-text,
   .sidebar-label,
   .sidebar-chevron,
@@ -53,44 +115,6 @@ html[data-sidebar-collapsed="true"] #sidebar {
 
   .sidebar-accordion-sub {
     @apply md:!hidden;
-  }
-}
-
-/* 悬浮展开：指针停在收起态侧边栏上时铺开。
-
-   JS 置 data-floating，这里负责形状。absolute + 高度撑满 + 抬高 z 层，
-   于是它浮在内容上而不挤动内容 —— 走正常文档流的话，指针每次扫过侧边栏
-   主内容都会缩一次，整页重排，比收起更烦人。
-
-   宽度 w-64 与固定展开一致，展开后的观感和点按钮展开相同。
-
-   这里不写 :hover：hover 只由 CSS 判断，而 JS 同时要改 data-collapsed 给
-   折叠面板与手风琴读。两套判据各管一段会让状态对不上（CSS 认为在悬浮、
-   JS 认为已收起），所以统一由 JS 置位，CSS 只认属性。 */
-html[data-sidebar-floating="true"] #sidebar {
-  @apply md:w-64;
-
-  /* 浮起时必须有底色与投影：它盖在内容上，没有边界文字会糊成一片。 */
-  @apply md:z-30 md:shadow-lg;
-
-  /* 脱离文档流。body 是 flex 行，侧边栏变成 absolute 后 #main-wrapper
-     (flex-1) 会自己补满整行宽度 —— 于是内容不缩、不重排，侧边栏盖在上面。
-     top/left 固定为 0，高度由 inset-y-0 撑满视口。 */
-  @apply md:absolute md:top-0 md:left-0 md:h-dvh;
-
-  /* 覆盖收起态的隐藏规则，把文字与箭头放回来。 */
-  .sidebar-brand-text,
-  .sidebar-chevron,
-  .icon-collapse {
-    @apply md:block;
-  }
-
-  .sidebar-label {
-    @apply md:block md:flex-1 md:truncate;
-  }
-
-  .icon-expand {
-    @apply md:hidden;
   }
 }
 
@@ -272,13 +296,32 @@ html[data-sidebar-floating="true"] #sidebar {
    注意 bg-popover + text-foreground：tokens 里只有 --popover 底色，没有
    popover-foreground 这个工具类，写它会直接让构建失败。 */
 .sidebar-subdrawer {
-  @apply border-border bg-popover text-foreground fixed z-40 flex min-w-40 flex-col overflow-y-auto rounded-lg border p-1.5 shadow-lg;
+  /* Level 2 of the avoidance chain: the panel is fixed beside the primary
+     sidebar, so its width is part of what the content must clear. It used to
+     be `min-w-40` (content-sized); a fixed width is what lets
+     --sidebar-inset be an arithmetic expression instead of a measurement.
+
+     `left` is the primary sidebar's width, straight from the same variable the
+     sidebar sizes itself with — not a JS measurement. menu-shadcn.js used to
+     write `panel.style.left = sidebar.getBoundingClientRect().right`, which
+     reads the *current* width; when the panel opened while the sidebar was
+     still easing from 3rem to 16rem, the panel pinned itself to the rail's
+     right edge and ended up hidden underneath the expanded sidebar. Driving it
+     from the variable makes the panel follow the sidebar frame by frame with
+     no re-measure and no listener. */
+  @apply border-border bg-popover text-foreground fixed z-40 flex flex-col overflow-y-auto rounded-lg border p-1.5 shadow-lg;
+
+  left: var(--sidebar-primary-w);
+  top: 0;
+  height: 100vh;
+  width: var(--sidebar-w-sub);
 
   opacity: 0;
   transform: translateX(-6px);
   transition:
     opacity 0.15s var(--ease-out),
-    transform 0.15s var(--ease-out);
+    transform 0.15s var(--ease-out),
+    left 200ms var(--ease-out);
 
   &.is-open {
     opacity: 1;
@@ -364,8 +407,28 @@ html[data-sidebar-floating="true"] #sidebar {
      a second flex line; the first line must always be exactly viewport-high
      so those wrapped lines land offscreen. basis-full (not w-full) on mobile:
      with the sidebar out of flow, a zero flex-basis would leave room for a
-     stray full-width sibling on the same line instead of forcing it to wrap. */
+     stray full-width sibling on the same line instead of forcing it to wrap.
+
+     Desktop: the whole avoidance chain lives in this one padding-left. The
+     sidebar is fixed (out of flow), so this padding is the ONLY thing keeping
+     the content out from under it — and because it is a padding on a flex-1
+     box rather than a width on a sibling, the content still fills every pixel
+     that remains, with no max-width cap anywhere. */
   @apply bg-background flex h-full flex-1 flex-col overflow-hidden py-2 pr-2 pl-0 max-md:basis-full max-md:p-0;
+
+  @media (width >= 48rem) {
+    padding-left: var(--sidebar-inset);
+    transition: padding-left 200ms var(--ease-out);
+  }
+}
+
+/* The inset eases only when the user asked for the change (the pin button).
+   A hover sweep sets no data-sidebar-anim, so the content follows the rail
+   instantly and never appears to lag behind the pointer. */
+html:not([data-sidebar-anim]) #main-wrapper {
+  @media (width >= 48rem) {
+    transition: none;
+  }
 }
 
 /* ── Content card ────────────────────────────────────────────────── */
@@ -377,10 +440,20 @@ html[data-sidebar-floating="true"] #sidebar {
   @apply border-border bg-background flex flex-1 flex-col overflow-hidden rounded-xl border shadow-xs max-md:rounded-none max-md:border-none max-md:shadow-none;
 }
 
-/* The rail width eases and #main-wrapper (flex-1) follows it frame by frame.
-   data-sidebar-anim is set on the first toggle, so a page load never plays it. */
+/* The rail width eases and #main-wrapper's padding-left follows it.
+
+   Both transitions are gated on data-sidebar-anim, which _applyCollapsed only
+   sets for the pin button. A hover sweep clears it, so the rail and the content
+   snap to the new width together instead of easing 200ms behind the pointer.
+
+   Written as a raw declaration rather than `@apply md:[transition:…]`: inside
+   @apply, Tailwind drops the `md:` wrapper and emits a bare `transition`, which
+   made the rail ease on EVERY width change — including the instant ones the
+   hover path asks for. */
 html[data-sidebar-anim] #sidebar {
-  @apply md:[transition:width_200ms_var(--ease-out)];
+  @media (width >= 48rem) {
+    transition: width 200ms var(--ease-out);
+  }
 }
 
 /* ── Card header ─────────────────────────────────────────────────── */
@@ -474,18 +547,19 @@ html[data-sidebar-anim] #sidebar {
 #maincontent {
   @apply flex-1 [scrollbar-gutter:stable] overflow-y-auto p-6 max-md:p-4;
 
-  /* The reference layout centres its page body in a max-w-7xl (80rem = 1280px)
-     column; without it a 2560px-wide window stretches every reading line and
-     every form field to the full width, which is what made wide screens look
-     unlike the reference more than any single size did.
+  /* Content uses every pixel the sidebar is not occupying.
 
-     Applied to the direct children rather than to #maincontent itself: the
-     scroll container has to stay full-width so its scrollbar sits at the
-     window edge, exactly as the reference keeps `main` scrollable full-bleed.
-     `mx-auto` needs a width, hence `w-full` + `max-w`. */
+     There used to be a `max-width: 80rem` centred column here (the reference
+     layout's max-w-7xl). It capped the page body at 1280px, so on a wide
+     window the theme showed a narrow strip of content with dead canvas on
+     both sides while the sidebar sat at the far left. The cap is gone: the
+     only thing that limits the content now is the sidebar, and that is
+     expressed as reserved space on #main-wrapper (see the two-level inset
+     below), not as a maximum width on the content itself.
+
+     `w-full` stays: a block child of the scroll container should fill it. */
   > * {
-    @apply mx-auto w-full;
-    max-width: 80rem;
+    @apply w-full;
   }
 
   /* Headings are already set once in _base.css (size, weight, tracking and

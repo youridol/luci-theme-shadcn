@@ -3,6 +3,55 @@
 All notable changes to `luci-theme-shadcn`. Versions follow the `Makefile`'s
 `PKG_VERSION`; the `.ipk` release suffix is `PKG_RELEASE`.
 
+## 0.10.0 — unreleased
+
+The content area stops being a centred column and becomes a full-bleed surface
+that yields to the sidebar in two steps.
+
+### Changed
+
+- **The content uses every pixel the sidebar is not occupying.** The
+  `max-width: 80rem` (1280px) centred column on `#maincontent`'s children is
+  gone. On a wide window that cap left a narrow strip of content with dead
+  canvas on both sides while the sidebar sat at the far left; now the only
+  limit on the content is the sidebar itself.
+- **The desktop sidebar is `position: fixed` and the content insets itself.**
+  It used to be a flex item that reserved space by shrinking `#main-wrapper`.
+  It is now out of flow, and `#main-wrapper` clears it with
+  `padding-left: var(--sidebar-inset)`. Because that is padding on a `flex-1`
+  box rather than a width on a sibling, the content still fills all remaining
+  width — which is what makes removing the cap possible.
+- **Avoidance is two levels, both driven by `<html>` attributes.** Level 1:
+  `data-sidebar-collapsed="false"` → `--sidebar-inset: 16rem`. Level 2:
+  `data-sidebar-sub="true"` → `--sidebar-inset: calc(16rem + 12rem)`, set by
+  `menu-shadcn.js` while the sub-panel is open. One variable chain
+  (`--sidebar-w-rail` / `--sidebar-w-full` / `--sidebar-w-sub` →
+  `--sidebar-primary-w` → `--sidebar-inset`) keeps the rail width, the panel
+  width and the inset from ever disagreeing.
+- **The sub-panel is positioned by CSS, not measured by JS.** It was
+  `panel.style.left = sidebar.getBoundingClientRect().right`, which read the
+  _current_ width; opening it while the sidebar was easing from 3rem to 16rem
+  pinned it to the rail's right edge and the expanded sidebar then covered it
+  (measured: panel `left: 48` against a 256px sidebar). It is now
+  `left: var(--sidebar-primary-w)` with a 200ms `left` transition, so it
+  follows the sidebar frame by frame with no re-measure and no listener.
+- **Picking a level-2 item now collapses both levels and resets.** The link
+  handler calls `collapseAfterNavigate()`, which closes the sub-panel, collapses
+  the primary sidebar, and **clears `shadcn.sidebar.pinned`**. Previously it
+  deliberately left the pin alone; the requirement is now "clicking a level-2
+  item returns everything to the default resting state", so the pin is part of
+  what gets reset.
+
+### Removed
+
+- **`html[data-sidebar-floating]`.** It existed only to switch the hover-expanded
+  sidebar to `absolute` so a pointer sweep would not reflow the page. With the
+  sidebar permanently out of flow, the attribute has no meaning; hover-expand and
+  click-to-pin now take the identical avoidance path.
+- **The fixed 12rem `min-w-40` on the sub-panel.** It was content-sized; a fixed
+  `--sidebar-w-sub` is what lets the inset be an arithmetic expression instead of
+  a measurement.
+
 ## 0.9.0 — unreleased
 
 The Overview page becomes an operations dashboard, and the shell is realigned

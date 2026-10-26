@@ -576,23 +576,31 @@ return baseclass.extend({
       requestAnimationFrame(() => panel.classList.add("is-open"));
     }
 
-    /* 全高显示：抽屉从视口顶一直到视口底，不再被侧边栏的高度或顶部的 56px
-       偏移裁短。
+    /* 二级避让：告诉 CSS 内容要再让开一个面板的宽度。
 
-       原来是把 top 定在侧边栏顶部往下 56px、maxHeight 取「侧边栏高度」——
-       一屏二十几个子项（系统分区 11 个、状态 7 个）会挤成一个小框还要内部滚动，
-       反而比手风琴更难扫。全高之后子项一次看全，滚动交给整列。
+       写在 <html> 上而不是 #sidebar 上，因为读它的是 #main-wrapper 的
+       padding-left，而 #main-wrapper 不是 #sidebar 的后代。属性一置位，
+       --sidebar-inset 就从 16rem 变成 16rem + 12rem。
 
-       left 仍贴侧边栏右缘：折叠成图标轨时宽度变窄，抽屉跟着左移。 */
-    const r = document.getElementById("sidebar").getBoundingClientRect();
-    panel.style.left = Math.max(0, Math.round(r.right)) + "px";
-    panel.style.top = "0px";
-    panel.style.height = "100vh";
-    panel.style.maxHeight = "100vh";
+       必须在上面那个 if 之外：同一分区重复悬停时分支不进入（只挪位置、
+       不重建 DOM），若把置位写在里面，属性就永远设不上。
+
+       面板的位置和尺寸全部由 CSS 决定（left: var(--sidebar-primary-w)、
+       height: 100vh、width: var(--sidebar-w-sub)），这里不写 style.left ——
+       原来读 getBoundingClientRect().right 会在侧边栏宽度过渡途中取到中途
+       值，把面板钉在图标轨右缘，随后被展开的侧边栏盖住。 */
+    document.documentElement.setAttribute("data-sidebar-sub", "true");
   },
 
   closeSubDrawer() {
     const panel = document.getElementById("sidebar-subdrawer");
+    /* 二级避让必须无条件退掉，即使面板本来就没开。
+
+       面板可能是被 _applyCollapsed 间接关掉的（侧边栏收起时），那时
+       `panel.hidden` 已经为 true，下面的提前 return 会跳过清理，属性就
+       永远留在 <html> 上 —— 内容从此一直多让开 12rem。 */
+    document.documentElement.removeAttribute("data-sidebar-sub");
+
     if (!panel || panel.hidden) return;
     panel.classList.remove("is-open");
     // 等过渡跑完再 hidden，否则是直接消失而不是滑出。
